@@ -263,16 +263,24 @@ $('findClips').onclick=async()=>{
      if(span<Math.min(12,wanted*.75))continue;
      if(span>Math.max(35,wanted*1.8))break;
      const text=group.map(x=>x.text).join(' ').replace(/\s+/g,' ').trim(),q=text.toLowerCase(),words=text.split(/\s+/).filter(Boolean);
-     const hook=/\?|kenapa|mengapa|bagaimana|ternyata|rahasia|bayangkan|what if|why|how|imagine/i.test(q);
-     const emotion=/takut|sedih|marah|senang|menangis|bahaya|mengejutkan|luar biasa|gagal|berhasil|cinta|love|hate|shock|fear/i.test(q);
-     const payoff=/akhirnya|hasilnya|ternyata|karena itu|jadi|kesimpulannya|berhasil|terbukti|maka|therefore|finally|result/i.test(q);
-     const share=/kamu|teman|orang|semua|setiap|pernah|harus|jangan|tips|cara|fakta|you|everyone|people/i.test(q);
+     const opening=(group[0]?.text||'').toLowerCase();
+     const hook=/\?|kenapa|mengapa|bagaimana|ternyata|rahasia|bayangkan|jangan|berhenti|tidak pernah|what if|why|how|imagine|never|stop|secret/i.test(opening);
+     const curiosity=/belum tentu|tidak disangka|anehnya|faktanya|masalahnya|yang mengejutkan|coba pikir|perhatikan|the truth|unexpected|nobody|mistake/i.test(q);
+     const emotion=/takut|sedih|marah|senang|menangis|bahaya|mengejutkan|luar biasa|gagal|berhasil|cinta|benci|shock|fear|angry|happy|fail|win/i.test(q);
+     const payoff=/akhirnya|hasilnya|ternyata|karena itu|jadi|kesimpulannya|berhasil|terbukti|maka|therefore|finally|result|lesson|solusinya/i.test(q);
+     const share=/kamu|teman|orang|semua|setiap|pernah|harus|jangan|tips|cara|fakta|you|everyone|people|your/i.test(q);
      const clarity=words.length>=18&&words.length<=105&&group.length>=1;
      const conversation=/setuju|menurutmu|bagaimana menurut|pernahkah|apa pendapat|komentar|pilih|do you agree|what do you think/i.test(q);
-     const contrast=/tetapi|namun|justru|padahal|sebaliknya|but|however|although|instead/i.test(q);
-     const specificity=/\d|persen|rupiah|tahun|kali|percent|dollar|million|billion/i.test(q);
-     const score=Math.min(100,(hook?24:0)+(emotion?20:0)+(payoff?18:0)+(share?14:0)+(clarity?12:0)+(conversation?12:0)+(contrast?5:0)+(specificity?5:0));
-     candidates.push({start:first.start,end:last.end,text,score,parts:group.length});
+     const contrast=/tetapi|namun|justru|padahal|sebaliknya|but|however|although|instead|di sisi lain/i.test(q);
+     const specificity=/\d|persen|rupiah|tahun|kali|percent|dollar|million|billion|nomor|number/i.test(q);
+     const filler=(q.match(/\b(eee|emmm|anu|kayak|gitu|uh|um|you know|like)\b/g)||[]).length;
+     const durationFit=span>=18&&span<=Math.min(55,wanted*1.35);
+     const openingLength=opening.split(/\s+/).filter(Boolean).length;
+     const hookPace=openingLength>=4&&openingLength<=18;
+     const raw=(hook?18:0)+(curiosity?14:0)+(emotion?15:0)+(payoff?15:0)+(share?10:0)+(clarity?10:0)+(conversation?8:0)+(contrast?5:0)+(specificity?5:0)+(durationFit?5:0)+(hookPace?5:0)-Math.min(10,filler*2);
+     const score=Math.max(0,Math.min(100,raw));
+     const reasons=[hook?'pembuka kuat':null,curiosity?'memancing penasaran':null,emotion?'emosi terasa':null,payoff?'ada hasil/payoff':null,contrast?'kontras/kejutan':null,specificity?'detail spesifik':null].filter(Boolean);
+     candidates.push({start:first.start,end:last.end,text,score,parts:group.length,reasons,hookText:group[0]?.text||''});
      if(span>=wanted)break;
     }
    }
@@ -286,9 +294,9 @@ $('findClips').onclick=async()=>{
    }
    if(picked.length){
     window.clipforgeSuggestedClips=picked.map((x,i)=>({name:'Momen '+(i+1),start:x.start,end:x.end,score:x.score,text:x.text}));
-    $('clipsList').innerHTML=window.clipforgeSuggestedClips.map((x,i)=>'<div class="clipitem"><b>'+x.name+'</b><div class="score">Skor editorial: '+x.score+'/100</div><div class="muted">'+x.start.toFixed(1)+'s – '+x.end.toFixed(1)+'s</div><div style="margin-top:6px;line-height:1.45">'+x.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div><button class="smallbtn" data-clip="'+i+'">Pilih momen</button></div>').join('');
+    $('clipsList').innerHTML=window.clipforgeSuggestedClips.map((x,i)=>'<div class="clipitem"><b>'+x.name+'</b><div class="score">Skor potensi editorial: '+x.score+'/100</div><div class="muted">'+x.start.toFixed(1)+'s – '+x.end.toFixed(1)+'s</div><div style="margin-top:6px;font-size:12px;color:var(--accent2)">Hook: '+(x.hookText||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div><div class="muted" style="margin-top:5px">'+(x.reasons||[]).join(' • ')+'</div><div style="margin-top:6px;line-height:1.45">'+x.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div><button class="smallbtn" data-clip="'+i+'">Pilih momen</button></div>').join('');
     $('clipsList').querySelectorAll('[data-clip]').forEach(b=>b.onclick=()=>{const x=window.clipforgeSuggestedClips[Number(b.dataset.clip)];$('start').value=x.start.toFixed(1);$('end').value=x.end.toFixed(1);video.currentTime=x.start;$('clipStatus').textContent=x.name+' dipilih dari konteks transkrip. Periksa potongan sebelum ekspor.'});
-    $('clipStatus').textContent='Selesai. Kandidat dibangun dari kalimat utuh dan diberi skor editorial. Skor bukan jaminan viral.';
+    $('clipStatus').textContent='Selesai. Kandidat dinilai dari hook pembuka, rasa penasaran, emosi, payoff, kejelasan, dan detail. Skor hanya estimasi editorial, bukan prediksi views.';
     return;
    }
   }
