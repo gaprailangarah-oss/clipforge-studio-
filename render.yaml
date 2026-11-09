@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: clipforge-studio-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: MAX_DURATION_SECONDS
+        value: 1200
+      - key: MAX_FILE_BYTES
+        value: 524288000
+      - key: HOURLY_DOWNLOAD_LIMIT
+        value: 3
