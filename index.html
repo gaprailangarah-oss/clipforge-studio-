@@ -137,6 +137,7 @@ details.advanced .controls{margin:0 0 12px}
 <aside class="right">
  <section class="panel" id="captionTool"><h2>🎙️ AI Caption & Hook</h2>
   <label>Judul / hook</label><input id="hook" type="text" placeholder="Tulis hook yang menarik...">
+  <label>Bahasa audio</label><select id="transcriptLanguage"><option value="indonesian" selected>Bahasa Indonesia</option><option value="english">English</option><option value="auto">Deteksi otomatis</option></select>
   <label>Subtitle / caption</label><textarea id="caption" rows="3" placeholder="Tulis subtitle atau kalimat pendukung..."></textarea>
   <div class="row" style="margin-top:9px"><button id="autoCaption" class="primary smallbtn">🎙️ Buat Auto Caption</button><button id="findHooks" class="smallbtn">🎯 Cari Hook Terbaik</button></div>
   <div id="captionStatus" class="muted" style="margin-top:8px">Subtitle akan dibuat otomatis saat Auto Edit dijalankan.</div>
@@ -248,7 +249,7 @@ async function getWhisper(){
   if(navigator.gpu){
    try{
     $('captionStatus').textContent='GPU browser terdeteksi. Mencoba Whisper dengan WebGPU…';
-    whisperPipeline=await pipeline('automatic-speech-recognition','onnx-community/whisper-tiny',{device:'webgpu',dtype:'fp16',progress_callback:progress});
+    whisperPipeline=await pipeline('automatic-speech-recognition','onnx-community/whisper-base',{device:'webgpu',dtype:'fp16',progress_callback:progress});
     $('captionStatus').textContent='Whisper siap — akselerasi WebGPU aktif. Model tersimpan di cache browser.';
     return whisperPipeline;
    }catch(gpuError){
@@ -256,7 +257,7 @@ async function getWhisper(){
     $('captionStatus').textContent='WebGPU tidak cocok pada perangkat ini. Beralih ke mode kompatibel WASM…';
    }
   }
-  whisperPipeline=await pipeline('automatic-speech-recognition','onnx-community/whisper-tiny',{device:'wasm',dtype:'q8',progress_callback:progress});
+  whisperPipeline=await pipeline('automatic-speech-recognition','onnx-community/whisper-base',{device:'wasm',dtype:'q8',progress_callback:progress});
   $('captionStatus').textContent='Whisper siap — mode WASM lokal aktif. Model tersimpan di cache browser.';
   return whisperPipeline;
  }finally{whisperLoading=false}
@@ -275,7 +276,14 @@ $('autoCaption').onclick=async()=>{
   const decoded=await ac.decodeAudioData(await sourceFile.arrayBuffer());
   const rate=decoded.sampleRate,ratio=rate/16000,length=Math.floor(decoded.length/ratio);
   const audio=new Float32Array(length),channels=Array.from({length:decoded.numberOfChannels},(_,i)=>decoded.getChannelData(i));
-  for(let i=0;i<length;i++){const pos=Math.min(decoded.length-1,Math.floor(i*ratio));let sum=0;for(const ch of channels)sum+=ch[pos];audio[i]=sum/channels.length}
+  // Linear resampling and channel mixing preserve speech detail better than nearest-neighbour sampling.
+  for(let i=0;i<length;i++){
+   const pos=i*ratio,left=Math.floor(pos),right=Math.min(left+1,decoded.length-1),mix=pos-left;
+   let sum=0;for(const ch of channels)sum+=ch[left]+(ch[right]-ch[left])*mix;
+   audio[i]=sum/channels.length;
+  }
+  let peak=0;for(let i=0;i<audio.length;i++)peak=Math.max(peak,Math.abs(audio[i]));
+  if(peak>0.00001&&peak<0.85){const gain=Math.min(8,0.85/peak);for(let i=0;i<audio.length;i++)audio[i]=Math.max(-1,Math.min(1,audio[i]*gain));}
   await ac.close();ac=null;
   const duration=audio.length/16000,transcriber=await getWhisper();
   const windowSeconds=180,overlapSeconds=3,total=Math.ceil(duration/windowSeconds),all=[];
@@ -285,7 +293,8 @@ $('autoCaption').onclick=async()=>{
    const end=Math.min(duration,(part+1)*windowSeconds);
    const segment=audio.subarray(Math.floor(start*16000),Math.floor(end*16000));
    $('captionStatus').textContent='Whisper AI memproses bagian '+(part+1)+'/'+total+' • '+Math.round(start/60)+'–'+Math.round(end/60)+' menit…';
-   const result=await transcriber(segment,{sampling_rate:16000,return_timestamps:true,chunk_length_s:30,stride_length_s:5});
+   const language=$('transcriptLanguage')?.value||'indonesian';
+   const result=await transcriber(segment,{sampling_rate:16000,return_timestamps:true,chunk_length_s:30,stride_length_s:5,language:language==='auto'?undefined:language,task:'transcribe'});
    const chunks=result.chunks||[];
    for(let k=0;k<chunks.length;k++){
     const item=chunks[k],localStart=Number(item.timestamp?.[0]);
@@ -303,7 +312,7 @@ $('autoCaption').onclick=async()=>{
   }
   subtitleSegments=all.sort((x,y)=>x.start-y.start).map(seg=>({...seg,text:addEmojiToText(seg.text)}));
   $('caption').value=subtitleSegments.map(x=>x.text).join(' ');
-  $('captionStatus').textContent='Selesai: '+subtitleSegments.length+' segmen subtitle dari '+Math.round(duration/60)+' menit audio. Whisper memproses audio per blok 3 menit untuk membatasi beban inferensi.';
+  $('captionStatus').textContent='Selesai: '+subtitleSegments.length+' segmen subtitle dari '+Math.round(duration/60)+' menit audio. Whisper Base multilingual dengan audio 16 kHz yang dinormalisasi digunakan.';
   updateOverlay();
  }catch(err){$('captionStatus').textContent='Auto Caption gagal: '+(err.message||err)+'. Coba video lebih pendek atau gunakan komputer dengan RAM lebih besar.'}
  finally{if(ac)await ac.close().catch(()=>{});btn.disabled=false}
