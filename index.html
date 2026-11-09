@@ -65,6 +65,40 @@ details.advanced .controls{margin:0 0 12px}
 @media(max-width:850px){main{grid-template-columns:1fr;max-width:720px;padding:12px}.right{display:flex}header{padding:0 14px}.stage{min-height:260px}#exportTool{align-items:flex-start;flex-direction:column}#exportTool>.row{width:100%}#exportTool button{flex:1}}
 @media(max-width:420px){.controls{grid-template-columns:1fr 1fr}#exportTool>.row{flex-wrap:wrap}#smartMp4{width:100%}}
 
+
+/* Simplified one-click workspace: keep advanced controls out of the primary flow. */
+@media(max-width:850px){
+ main{display:flex;flex-direction:column;gap:12px;padding:10px}
+ .stage{min-height:240px}
+ .panel{padding:12px}
+ header .tag{display:none}
+}
+#clipsTool,#autoCreate,#exportFast,#iphonePart,
+#autoCaption,#findHooks,#autoEmoji,
+.hookmeter,#hookSuggestions{display:none!important}
+.timeline .timeinputs,.timeline>.row:last-child{display:none}
+.timeline{margin-top:8px}
+#captionTool>label:first-of-type,
+#captionTool>input#hook{display:none}
+#captionTool>h2{margin-bottom:8px}
+#captionTool #caption{min-height:74px}
+#captionTool .hint{display:none}
+#captionTool .row.between{display:none}
+#autoCreatorTool{margin-top:12px!important;padding:14px!important}
+#autoCreatorTool h2{font-size:16px}
+#autoCreateStatus{line-height:1.55}
+#exportTool{margin-top:12px!important}
+#exportTool .row{gap:7px}
+#export{min-width:120px}
+#projectTool,#visualTool{display:none}
+#projectTool.expanded,#visualTool.expanded{display:block}
+#projectTool.expanded,#visualTool.expanded{margin-top:10px}
+@media(max-width:420px){
+ #exportTool>.row{display:flex;flex-direction:column;width:100%}
+ #export{width:100%;min-height:44px}
+ #autoEditPreview{min-height:48px}
+ #captionTool #caption{font-size:16px}
+}
 </style></head>
 <body>
 <header><div class="logo">CLIP<span>FORGE</span> <span style="color:#e9ecf5">STUDIO</span></div><div class="row"><span class="tag">BROWSER VIDEO EDITOR</span><span class="pill">BETA</span></div></header>
@@ -80,9 +114,9 @@ details.advanced .controls{margin:0 0 12px}
  </div>
 
  <section class="panel clipfinder" id="clipsTool">
-  <div class="row between"><div><h2 style="margin:0">✂️ Temukan momen terbaik</h2><div class="muted">AI membaca transkrip terlebih dahulu untuk memilih kalimat utuh. Jika belum ada transkrip, aplikasi mencari perubahan visual.</div></div><button id="findClips" class="primary">Analisis video</button></div>
+  <div class="row between"><div><h2 style="margin:0">✂️ Temukan momen terbaik</h2><div class="muted">Pemilihan momen, subtitle, emoji, dan hook dijalankan otomatis oleh Auto Edit.</div></div><button id="findClips" class="primary">Analisis video</button></div>
   <div class="row" style="margin-top:10px"><div class="field"><label>Durasi setiap klip</label><select id="clipLength"><option value="10">10 detik</option><option value="15" selected>15 detik</option><option value="20">20 detik</option><option value="30">30 detik</option></select></div></div>
-  <div id="clipStatus" class="muted" style="margin-top:8px">Pilih video. Untuk hasil terbaik, jalankan Auto Caption terlebih dahulu agar pemilihan klip memahami isi percakapan.</div>
+  <div id="clipStatus" class="muted" style="margin-top:8px">Analisis otomatis berjalan saat kamu menekan Auto Edit.</div>
   <div id="clipsList" class="cliplist"></div>
  </section>
  <details class="advanced"><summary>Pengaturan video & ekspor</summary><div class="controls">
@@ -94,12 +128,12 @@ details.advanced .controls{margin:0 0 12px}
  </details>
  <div class="panel" id="autoCreatorTool" style="margin-top:18px;background:linear-gradient(120deg,#27204c,#142b36);border-color:#6555b8">
   <h2 style="margin:0 0 7px">✨ Auto Creator — Satu Klik</h2>
-  <div class="muted" style="margin-bottom:12px">Transkripsi AI → pilih momen terbaik → buat video vertikal siap ekspor.</div>
+  <div class="muted" style="margin-bottom:12px">Satu alur otomatis: transkrip, subtitle, emoji, hook, pemilihan momen, dan preview edit.</div>
   <button id="autoEditPreview" class="primary" style="width:100%;padding:14px;font-size:14px;margin-bottom:8px" disabled>✨ AUTO EDIT & LIHAT PREVIEW</button>
   <button id="autoCreate" class="primary" style="width:100%;padding:14px;font-size:14px" disabled>✨ EKSPOR 5 KLIP OTOMATIS</button>
-  <div class="muted" id="autoCreateStatus" style="margin-top:9px">Pilih video untuk mengaktifkan Auto Creator.</div>
+  <div class="muted" id="autoCreateStatus" style="margin-top:9px">Pilih video, lalu tekan Auto Edit. Periksa preview sebelum ekspor.</div>
  </div>
- <div class="row between" id="exportTool" style="margin-top:18px"><div><h2 style="margin:0">Ekspor video</h2><div class="muted">MP4 (H.264) • diproses di browser</div></div><div class="row"><button id="exportFast" disabled>Ekspor cepat WebM</button><button id="smartMp4" disabled>MP4 Cepat + Semua Fitur</button><button id="export" class="primary" disabled>Ekspor MP4</button></div><div class="row" style="margin-top:10px"><button id="iphonePart" disabled>📱 Ekspor bagian iPhone (2 menit)</button><span class="muted">Untuk video panjang: unduh per bagian agar RAM iPhone tidak menumpuk.</span></div></div>
+ <div class="row between" id="exportTool" style="margin-top:18px"><div><h2 style="margin:0">Ekspor hasil edit</h2><div class="muted">MP4 (H.264) • video diproses di perangkat</div></div><div class="row"><button id="exportFast" disabled>Ekspor cepat WebM</button><button id="smartMp4" disabled>MP4 Cepat + Semua Fitur</button><button id="export" class="primary" disabled>Ekspor MP4</button></div><div class="row" style="margin-top:10px"><button id="iphonePart" disabled>📱 Ekspor bagian iPhone (2 menit)</button><span class="muted">Untuk video panjang: unduh per bagian agar RAM iPhone tidak menumpuk.</span></div></div>
  <div class="progress"><div id="bar"></div></div><div id="status">Pilih video untuk mulai.</div>
 </section>
 <aside class="right">
@@ -107,9 +141,9 @@ details.advanced .controls{margin:0 0 12px}
   <label>Judul / hook</label><input id="hook" type="text" placeholder="Tulis hook yang menarik...">
   <label>Subtitle / caption</label><textarea id="caption" rows="3" placeholder="Tulis subtitle atau kalimat pendukung..."></textarea>
   <div class="row" style="margin-top:9px"><button id="autoCaption" class="primary smallbtn">🎙️ Buat Auto Caption</button><button id="findHooks" class="smallbtn">🎯 Cari Hook Terbaik</button></div>
-  <div id="captionStatus" class="muted" style="margin-top:8px">Siapkan transkrip dengan Whisper AI, lalu pilih hook dan klip terbaik.</div>
+  <div id="captionStatus" class="muted" style="margin-top:8px">Subtitle akan dibuat otomatis saat Auto Edit dijalankan.</div>
   <div id="hookSuggestions" class="cliplist"></div>
-  <div class="hint" style="margin-top:8px">Transkripsi diproses di perangkat setelah model AI diunduh. Kinerja bergantung pada perangkat dan dukungan browser. Untuk hasil terbaik gunakan video dengan audio yang jelas.</div>
+  <div class="hint" style="margin-top:8px">Pemrosesan dilakukan di perangkat. Waktu proses bergantung pada durasi video, memori, dan kemampuan iPhone.</div>
   <div class="row between" style="margin-top:10px"><span class="muted">Bantu optimalkan teks</span><button id="autoEmoji" class="smallbtn">✨ Auto Emoji</button></div>
   <div class="hookmeter">
    <div class="meterhead"><b>🎯 Hook Meter</b><b id="hookScore">0/100</b></div>
