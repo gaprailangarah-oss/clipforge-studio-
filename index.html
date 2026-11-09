@@ -139,7 +139,7 @@ details.advanced .controls{margin:0 0 12px}
   <label>Judul / hook</label><input id="hook" type="text" placeholder="Tulis hook yang menarik...">
   <label>Bahasa audio</label><select id="transcriptLanguage"><option value="indonesian" selected>Bahasa Indonesia</option><option value="english">English</option><option value="auto">Deteksi otomatis</option></select>
   <label>Transkrip ucapan asli (otomatis)</label><div id="captionTranscript" aria-live="polite">Teks akan menyalin kata-kata yang terdengar di audio video, bukan membuat kalimat baru.</div>
-  <div class="row" style="margin-top:9px"><button id="autoCaption" class="primary smallbtn">🎙️ Buat Auto Caption</button><button id="findHooks" class="smallbtn">🎯 Cari Hook Terbaik</button></div>
+  <div class="row" style="margin-top:9px"><button id="autoCaption" class="primary smallbtn">🎙️ Buat Auto Caption</button><button id="cloudCaption" class="smallbtn">✨ AI Bersihkan Suara + Caption</button><button id="findHooks" class="smallbtn">🎯 Cari Hook Terbaik</button></div>
   <div id="captionStatus" class="muted" style="margin-top:8px">Subtitle dibuat otomatis dari audio video. Tidak perlu mengetik subtitle.</div>
   <div id="hookSuggestions" class="cliplist"></div>
   <div class="hint" style="margin-top:8px">Audio dipilih dari kanal paling jelas, difilter untuk rentang suara manusia, lalu dinormalisasi sebelum Whisper memprosesnya. Semua berjalan di perangkat.</div>
@@ -383,6 +383,39 @@ async function captureAudioFromElement(file){
  }
 }
 function resampleAudio(input,fromRate,toRate){if(fromRate===toRate)return input;const ratio=fromRate/toRate,length=Math.round(input.length/ratio),out=new Float32Array(length);for(let i=0;i<length;i++){const pos=i*ratio,left=Math.floor(pos),right=Math.min(left+1,input.length-1),mix=pos-left;out[i]=input[left]*(1-mix)+input[right]*mix}return out}
+
+function encodeMonoWav(samples,sampleRate){
+ const buffer=new ArrayBuffer(44+samples.length*2),view=new DataView(buffer);
+ const write=(offset,value)=>{for(let i=0;i<value.length;i++)view.setUint8(offset+i,value.charCodeAt(i))};
+ write(0,'RIFF');view.setUint32(4,36+samples.length*2,true);write(8,'WAVE');write(12,'fmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);view.setUint32(24,sampleRate,true);view.setUint32(28,sampleRate*2,true);view.setUint16(32,2,true);view.setUint16(34,16,true);write(36,'data');view.setUint32(40,samples.length*2,true);
+ for(let i=0;i<samples.length;i++){const value=Math.max(-1,Math.min(1,samples[i]));view.setInt16(44+i*2,value<0?value*32768:value*32767,true)}
+ return new Blob([buffer],{type:'audio/wav'});
+}
+$('cloudCaption').onclick=async()=>{
+ const btn=$('cloudCaption');if(!sourceFile){$('captionStatus').textContent='Pilih file video terlebih dahulu.';return}
+ btn.disabled=true;let ac=null;
+ try{
+  $('captionStatus').textContent='Membaca audio untuk dikirim ke AI…';
+  const AC=window.AudioContext||window.webkitAudioContext;ac=new AC();
+  let decoded;try{decoded=await ac.decodeAudioData(await sourceFile.arrayBuffer())}catch(e){throw new Error('Browser tidak dapat membaca audio file ini. Coba MP4 atau MOV.')}
+  const rate=decoded.sampleRate,channels=Array.from({length:decoded.numberOfChannels},(_,i)=>decoded.getChannelData(i));
+  const mixed=new Float32Array(decoded.length);
+  for(let ch=0;ch<channels.length;ch++)for(let i=0;i<mixed.length;i++)mixed[i]+=channels[ch][i]/channels.length;
+  const mono=resampleAudio(mixed,rate,16000),wav=encodeMonoWav(mono,16000);
+  await ac.close();ac=null;
+  $('captionStatus').textContent='Mengirim audio. AI sedang memisahkan suara manusia dari musik dan noise…';
+  const form=new FormData();form.append('audio',wav,'clipforge-audio.wav');form.append('language',$('transcriptLanguage')?.value||'auto');
+  const response=await fetch(getApiBase()+'/api/captions/clean',{method:'POST',body:form});
+  const data=await response.json().catch(()=>({}));
+  if(!response.ok)throw new Error(data.detail||'Layanan AI gagal memproses audio.');
+  subtitleSegments=(data.segments||[]).map(x=>({start:Number(x.start),end:Number(x.end),text:String(x.text||'').trim()})).filter(x=>Number.isFinite(x.start)&&Number.isFinite(x.end)&&x.end>x.start&&x.text);
+  if(!subtitleSegments.length)throw new Error('AI tidak menemukan ucapan yang dapat ditranskripsikan.');
+  $('captionTranscript').textContent=subtitleSegments.map(x=>x.text).join(' ');
+  $('captionStatus').textContent='Selesai: '+data.word_count+' kata • '+subtitleSegments.length+' caption • '+(data.language||'bahasa terdeteksi')+' • suara sudah diisolasi dari backsound.';
+  updateOverlay();
+ }catch(err){console.error('ClipForge Cloud Caption:',err);$('captionStatus').textContent='Cloud Caption gagal: '+(err.message||err)+'. Pastikan API ElevenLabs sudah diatur di Render.'}
+ finally{if(ac)await ac.close().catch(()=>{});btn.disabled=false}
+};
 $('autoCaption').onclick=async()=>{
  const btn=$('autoCaption');
  if(!sourceFile){$('captionStatus').textContent='Untuk Auto Caption, pilih file video dari perangkat (direct URL belum didukung).';return}
