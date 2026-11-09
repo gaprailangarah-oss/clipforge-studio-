@@ -315,8 +315,12 @@ $('autoCaption').onclick=async()=>{
     const absoluteStart=start+localStart,absoluteEnd=Math.min(duration,start+Math.max(localStart+.15,localEnd));
     const textValue=(item.text||'').trim();
     if(textValue&&absoluteEnd>absoluteStart&&absoluteStart>=lastAcceptedEnd-.35){
-     all.push({start:absoluteStart,end:absoluteEnd,text:textValue});
-     lastAcceptedEnd=absoluteEnd;
+     // Clamp small chunk-boundary overlaps so playback lookup always sees ordered, non-overlapping cues.
+     const cueStart=Math.max(absoluteStart,lastAcceptedEnd);
+     if(absoluteEnd>cueStart+.05){
+      all.push({start:cueStart,end:absoluteEnd,text:textValue});
+      lastAcceptedEnd=absoluteEnd;
+     }
     }
    }
   }
