@@ -23,6 +23,11 @@ label{display:block;color:#b8c3d4;font-size:12px;margin:10px 0 6px}.field{min-wi
 .right{display:flex;flex-direction:column;gap:14px}.hint{background:#111a24;border:1px solid #26384b;padding:10px;border-radius:10px;color:#aebbd0;font-size:11px;line-height:1.55}
 .progress{height:7px;border-radius:9px;background:#273144;overflow:hidden;margin:10px 0}.progress>div{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .2s}
 #status{font-size:12px;color:var(--muted);min-height:18px}.smallbtn{padding:7px 9px}.cliplist{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:8px;margin-top:10px}.clipitem{background:#101722;border:1px solid var(--line);border-radius:9px;padding:9px}.clipitem button{width:100%;margin-top:6px}.clipfinder{margin-top:14px}.pill{display:inline-block;padding:4px 8px;background:#25243e;color:#c7bdff;border-radius:20px;font-size:10px}
+.hookmeter{margin-top:12px;padding:12px;background:#101722;border:1px solid var(--line);border-radius:11px}
+.metertrack{height:9px;background:#283246;border-radius:20px;overflow:hidden;margin:8px 0}
+#hookMeterBar{height:100%;width:0;background:linear-gradient(90deg,#ff7185,#ffc857,#40d9c2);transition:width .25s}
+.meterhead{display:flex;justify-content:space-between;align-items:center;font-size:12px}
+#hookFeedback{font-size:11px;color:var(--muted);line-height:1.5}
 @media(max-width:950px){main{grid-template-columns:1fr}.right{display:grid;grid-template-columns:1fr 1fr}}@media(max-width:620px){header{padding:0 14px}main{padding:12px}.right{display:flex}.controls{grid-template-columns:1fr 1fr}.stage{min-height:260px}}
 </style></head>
 <body>
@@ -55,6 +60,12 @@ label{display:block;color:#b8c3d4;font-size:12px;margin:10px 0 6px}.field{min-wi
  <section class="panel"><h2>✍️ Teks & Branding</h2>
   <label>Judul / hook</label><input id="hook" type="text" placeholder="Tulis hook yang menarik...">
   <label>Subtitle / caption</label><textarea id="caption" rows="3" placeholder="Tulis subtitle atau kalimat pendukung..."></textarea>
+  <div class="row between" style="margin-top:10px"><span class="muted">Bantu optimalkan teks</span><button id="autoEmoji" class="smallbtn">✨ Auto Emoji</button></div>
+  <div class="hookmeter">
+   <div class="meterhead"><b>🎯 Hook Meter</b><b id="hookScore">0/100</b></div>
+   <div class="metertrack"><div id="hookMeterBar"></div></div>
+   <div id="hookFeedback">Tulis hook untuk melihat penilaian daya tariknya.</div>
+  </div>
   <label>Watermark</label><input id="watermark" type="text" placeholder="@namachannel">
   <div class="row"><div class="field"><label>Ukuran teks</label><select id="textSize"><option value="24">Kecil</option><option value="36" selected>Sedang</option><option value="52">Besar</option><option value="68">Ekstra besar</option></select></div><div class="field"><label>Posisi teks</label><select id="textPos"><option value="top">Atas</option><option value="center" selected>Tengah</option><option value="bottom">Bawah</option></select></div></div>
   <label>Warna teks</label><select id="textColor"><option value="#ffffff">Putih</option><option value="#ffe45c">Kuning</option><option value="#65e6d2">Mint</option><option value="#ff8eaa">Pink</option></select>
@@ -80,6 +91,53 @@ $('setIn').onclick=()=>{$('start').value=video.currentTime.toFixed(1)};
 $('setOut').onclick=()=>{$('end').value=video.currentTime.toFixed(1)};
 $('playClip').onclick=()=>{if(!video.src)return;let s=Number($('start').value)||0,e=Number($('end').value)||video.duration;video.currentTime=s;video.play();const stop=()=>{if(video.currentTime>=e){video.pause();video.removeEventListener('timeupdate',stop)}};video.addEventListener('timeupdate',stop)};
 ['hook','caption','watermark','textSize','textPos','textColor','zoom','bgColor'].forEach(id=>$(id).addEventListener('input',updateOverlay));
+function chooseEmoji(text){
+ const s=(text||'').toLowerCase();
+ const groups=[
+  [/rahasia|secret|tersembunyi|hidden|ternyata|fakta|misteri|mystery/,'🤯'],
+  [/uang|kaya|bisnis|cuan|profit|harga|mahal|murah|money/,'💰'],
+  [/bahaya|ancam|risiko|risk|gagal|kesalahan|error|warning/,'⚠️'],
+  [/tips|cara|tutorial|belajar|how to|trik|hack/,'💡'],
+  [/sedih|menangis|kehilangan|kisah|heart|sad|cinta|love/,'🥺'],
+  [/lucu|ngakak|kocak|funny|😂|humor/,'😂'],
+  [/game|main|gaming|menang|kalah|score/,'🎮'],
+  [/cepat|tercepat|rekor|besar|terbesar|luar biasa|amazing/,'🚀'],
+  [/makanan|masak|resep|food|eat/,'🍜'],
+  [/teknologi|ai|robot|aplikasi|tech/,'🤖'],
+  [/olahraga|bola|gol|fitness|gym/,'🔥']
+ ];
+ for(const [pattern,emoji] of groups){if(pattern.test(s))return emoji;}
+ return /\?|bagaimana|kenapa|mengapa|why|what if/.test(s)?'🤔':'✨';
+}
+function addEmojiToText(value){
+ const text=(value||'').trim();
+ if(!text)return text;
+ const emoji=chooseEmoji(text);
+ return /\p{Extended_Pictographic}/u.test(text)?text:emoji+' '+text;
+}
+function updateHookMeter(){
+ const text=$('hook').value.trim();
+ let score=0;const tips=[];
+ if(!text){$('hookScore').textContent='0/100';$('hookMeterBar').style.width='0%';$('hookFeedback').textContent='Tulis hook untuk melihat penilaian daya tariknya.';return;}
+ const len=text.length;
+ if(len>=25&&len<=85)score+=25;else if(len>=15&&len<=110)score+=16;else tips.push('Buat lebih ringkas, idealnya sekitar 25–85 karakter.');
+ if(/\?|bagaimana|kenapa|mengapa|ternyata|rahasia|bayangkan|what if|why|how|secret/i.test(text))score+=20;else tips.push('Tambahkan rasa penasaran, misalnya pertanyaan atau kata “ternyata”.');
+ if(/\d/.test(text))score+=10;else tips.push('Angka atau data spesifik bisa membuat klaim lebih konkret.');
+ if(/ternyata|rahasia|terbukti|berubah|mustahil|jarang|terbesar|pertama|kesalahan|jangan|wajib|fakta|mengejutkan|never|secret|mistake|shocking/i.test(text))score+=20;else tips.push('Gunakan kata kuat yang tetap sesuai isi video.');
+ if(/kamu|anda|ini|ini dia|begini|kenapa|mengapa|how|you|your/i.test(text))score+=10;
+ if(text.split(/\s+/).filter(Boolean).length>=4&&text.split(/\s+/).filter(Boolean).length<=14)score+=15;else tips.push('Coba gunakan sekitar 4–14 kata.');
+ score=Math.min(100,score);
+ $('hookScore').textContent=score+'/100';$('hookMeterBar').style.width=score+'%';
+ $('hookFeedback').textContent=(score>=80?'Kuat! Hook cukup ringkas dan memancing rasa penasaran.':score>=55?'Lumayan. Masih bisa dibuat lebih spesifik dan bikin penasaran.':'Perlu diperkuat. ')+(tips.length?' Saran: '+tips.slice(0,2).join(' '):' Tetap pastikan sesuai isi video.');
+}
+$('hook').addEventListener('input',updateHookMeter);
+$('autoEmoji').onclick=()=>{
+ const hook=$('hook').value,caption=$('caption').value;
+ if(!hook.trim()&&!caption.trim()){ $('hookFeedback').textContent='Isi hook atau caption dulu, lalu coba Auto Emoji.';return; }
+ if(hook.trim())$('hook').value=addEmojiToText(hook);
+ if(caption.trim())$('caption').value=caption.split(/\n/).map(line=>addEmojiToText(line)).join('\n');
+ updateOverlay();updateHookMeter();
+};
 $('volume').oninput=()=>{$('volLabel').textContent=$('volume').value+'%';video.volume=Math.min(1.5,Number($('volume').value)/100)};
 function updateOverlay(){const el=$('overlayPreview');el.innerHTML='';el.style.color=$('textColor').value;el.style.fontSize=$('textSize').value+'px';el.style.top=$('textPos').value==='top'?'10%':$('textPos').value==='center'?'42%':'auto';el.style.bottom=$('textPos').value==='bottom'?'14%':'auto';el.style.transform='scale('+(Number($('zoom').value)/100)+')';el.style.background='transparent';el.style.textShadow='0 3px 8px #000,0 1px 2px #000';el.textContent=[$('hook').value,$('caption').value].filter(Boolean).join('\\n');$('stage').style.background=$('bgColor').value}
 
