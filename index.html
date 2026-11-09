@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ClipForge Studio — Video Editor</title>
+<style>
+:root{--bg:#0b0d12;--panel:#141923;--panel2:#1b2330;--line:#293345;--muted:#9aa8bb;--txt:#f3f6fb;--accent:#8b7cff;--accent2:#40d9c2;--danger:#ff7185}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 15% 0%,#1b2040 0,transparent 35%),var(--bg);color:var(--txt);font:14px Inter,system-ui,Arial}
+header{height:66px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:sticky;top:0;background:#0b0d12ed;backdrop-filter:blur(14px);z-index:4}
+.logo{font-size:18px;font-weight:850;letter-spacing:-.6px}.logo span{color:var(--accent)}.tag{font-size:11px;color:var(--muted);border:1px solid var(--line);padding:6px 9px;border-radius:20px}
+main{max-width:1440px;margin:auto;padding:22px;display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:18px}
+.panel{background:linear-gradient(180deg,#171e2a,#121720);border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:0 12px 35px #0003}
+h2{font-size:15px;margin:0 0 14px}h3{font-size:12px;color:#d8def0;margin:18px 0 10px;text-transform:uppercase;letter-spacing:.09em}
+.stage{min-height:400px;display:flex;align-items:center;justify-content:center;background:#080a0e;border:1px solid #263044;border-radius:13px;overflow:hidden;position:relative}
+video{max-width:100%;max-height:65vh;display:block;background:#050608}#empty{color:var(--muted);text-align:center;padding:40px;line-height:1.7}#overlayPreview{position:absolute;pointer-events:none;text-align:center;font-weight:900;text-shadow:0 2px 8px #000;white-space:pre-wrap;width:90%;top:14%;font-size:clamp(20px,4vw,38px)}
+.row{display:flex;gap:9px;align-items:center;flex-wrap:wrap}.between{justify-content:space-between}.muted{color:var(--muted);font-size:12px}
+button,.filebtn{border:1px solid var(--line);background:#202a39;color:var(--txt);padding:10px 13px;border-radius:10px;font-weight:650;cursor:pointer;font-size:12px}
+button:hover,.filebtn:hover{border-color:var(--accent);background:#29334a}button.primary{background:linear-gradient(110deg,#7969f5,#a16dff);border:0;color:white}button:disabled{opacity:.45;cursor:not-allowed}
+input[type=text],input[type=url],input[type=number],select,textarea{width:100%;background:#0d121a;color:var(--txt);border:1px solid var(--line);border-radius:9px;padding:10px;font:inherit;outline:none}
+input:focus,select:focus,textarea:focus{border-color:var(--accent)}input[type=range]{width:100%;accent-color:var(--accent)}
+label{display:block;color:#b8c3d4;font-size:12px;margin:10px 0 6px}.field{min-width:0;flex:1}.timeline{margin-top:14px}.timeinputs{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.controls{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
+.right{display:flex;flex-direction:column;gap:14px}.hint{background:#111a24;border:1px solid #26384b;padding:10px;border-radius:10px;color:#aebbd0;font-size:11px;line-height:1.55}
+.progress{height:7px;border-radius:9px;background:#273144;overflow:hidden;margin:10px 0}.progress>div{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .2s}
+#status{font-size:12px;color:var(--muted);min-height:18px}.smallbtn{padding:7px 9px}.pill{display:inline-block;padding:4px 8px;background:#25243e;color:#c7bdff;border-radius:20px;font-size:10px}
+@media(max-width:950px){main{grid-template-columns:1fr}.right{display:grid;grid-template-columns:1fr 1fr}}@media(max-width:620px){header{padding:0 14px}main{padding:12px}.right{display:flex}.controls{grid-template-columns:1fr 1fr}.stage{min-height:260px}}
+</style></head>
+<body>
+<header><div class="logo">CLIP<span>FORGE</span> <span style="color:#e9ecf5">STUDIO</span></div><div class="row"><span class="tag">BROWSER VIDEO EDITOR</span><span class="pill">BETA</span></div></header>
+<main>
+<section class="panel">
+ <div class="row between"><h2>Preview & Timeline</h2><div class="row"><label class="filebtn" style="margin:0">Pilih video<input id="file" type="file" accept="video/*" hidden></label><button id="loadUrl" class="smallbtn">Muat URL</button></div></div>
+ <div class="stage" id="stage"><div id="empty">🎬<br><b>Mulai edit videomu</b><br>Upload file atau tempel direct link MP4/WebM<br><span class="muted">Link halaman YouTube/TikTok/Instagram tidak didukung langsung.</span></div><video id="video" controls playsinline style="display:none"></video><div id="overlayPreview"></div></div>
+ <div class="timeline">
+  <div class="row between"><span class="muted">Potong klip</span><span class="muted" id="durationLabel">Durasi: —</span></div>
+  <div class="timeinputs"><div><label>Mulai (detik)</label><input id="start" type="number" min="0" step=".1" value="0"></div><div><label>Akhir (detik)</label><input id="end" type="number" min="0" step=".1" value="0"></div></div>
+  <div class="row" style="margin-top:10px"><button id="setIn" class="smallbtn">Set mulai dari posisi</button><button id="setOut" class="smallbtn">Set akhir dari posisi</button><button id="playClip" class="smallbtn">Putar bagian</button></div>
+ </div>
+ <div class="controls">
+  <div><label>Rasio video</label><select id="ratio"><option value="9:16">9:16 — Shorts/Reels</option><option value="1:1">1:1 — Square</option><option value="16:9">16:9 — YouTube</option><option value="original">Asli</option></select></div>
+  <div><label>Resolusi ekspor</label><select id="resolution"><option value="720">720p</option><option value="1080" selected>1080p</option><option value="480">480p</option></select></div>
+  <div><label>Kecepatan</label><select id="speed"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1× normal</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></div>
+ </div>
+ <div class="row between" style="margin-top:18px"><div><h2 style="margin:0">Ekspor video</h2><div class="muted">MP4 (H.264) • diproses di browser</div></div><button id="export" class="primary" disabled>Ekspor MP4</button></div>
+ <div class="progress"><div id="bar"></div></div><div id="status">Pilih video untuk mulai.</div>
+</section>
+<aside class="right">
+ <section class="panel"><h2>✍️ Teks & Branding</h2>
+  <label>Judul / hook</label><input id="hook" type="text" placeholder="Tulis hook yang menarik...">
+  <label>Subtitle / caption</label><textarea id="caption" rows="3" placeholder="Tulis subtitle atau kalimat pendukung..."></textarea>
+  <label>Watermark</label><input id="watermark" type="text" placeholder="@namachannel">
+  <div class="row"><div class="field"><label>Ukuran teks</label><select id="textSize"><option value="24">Kecil</option><option value="36" selected>Sedang</option><option value="52">Besar</option><option value="68">Ekstra besar</option></select></div><div class="field"><label>Posisi teks</label><select id="textPos"><option value="top">Atas</option><option value="center" selected>Tengah</option><option value="bottom">Bawah</option></select></div></div>
+  <label>Warna teks</label><select id="textColor"><option value="#ffffff">Putih</option><option value="#ffe45c">Kuning</option><option value="#65e6d2">Mint</option><option value="#ff8eaa">Pink</option></select>
+ </section>
+ <section class="panel"><h2>🔊 Audio & Tampilan</h2>
+  <label>Volume audio <span id="volLabel">100%</span></label><input id="volume" type="range" min="0" max="150" value="100">
+  <label>Zoom / crop</label><input id="zoom" type="range" min="100" max="150" value="100"><div class="row between muted"><span>Fit</span><span>Zoom 150%</span></div>
+  <label>Warna latar di area kosong</label><select id="bgColor"><option value="#000000">Hitam</option><option value="#111827">Navy gelap</option><option value="#ffffff">Putih</option></select>
+  <div class="hint" style="margin-top:14px">Tip: untuk video vertikal, pilih 9:16. Gunakan hook singkat di awal dan watermark kecil agar identitas channel tetap terlihat.</div>
+ </section>
+ <section class="panel"><h2>🧰 Alat cepat</h2><div class="row"><button id="reset" class="smallbtn">Reset edit</button><button id="downloadSource" class="smallbtn" disabled>Unduh sumber</button></div><p class="muted">Proyek berjalan lokal di browser. Video tidak diunggah ke server aplikasi ini.</p></section>
+</aside>
+</main>
+<script type="module">
+const $=id=>document.getElementById(id);
+const video=$('video'), fileInput=$('file'); let sourceFile=null, sourceUrl=null, ffmpeg=null, ffmpegReady=false, exporting=false;
+function status(s){$('status').textContent=s}
+function setVideo(src,file=null){if(sourceUrl)URL.revokeObjectURL(sourceUrl);sourceFile=file;sourceUrl=src;video.src=src;video.style.display='block';$('empty').style.display='none';$('export').disabled=false;$('downloadSource').disabled=!file;video.onloadedmetadata=()=>{$('start').value=0;$('end').value=video.duration.toFixed(1);$('durationLabel').textContent='Durasi: '+video.duration.toFixed(1)+' detik';status('Video siap diedit.');updateOverlay()};video.onerror=()=>status('Video gagal dimuat. Periksa URL atau dukungan CORS.')}
+fileInput.addEventListener('change',e=>{const f=e.target.files[0];if(f)setVideo(URL.createObjectURL(f),f)});
+$('loadUrl').onclick=()=>{const u=prompt('Tempel direct URL file video MP4/WebM:');if(u)setVideo(u)};
+$('downloadSource').onclick=()=>{if(!sourceFile)return;const a=document.createElement('a');a.href=sourceUrl;a.download=sourceFile.name;a.click()};
+$('setIn').onclick=()=>{$('start').value=video.currentTime.toFixed(1)};
+$('setOut').onclick=()=>{$('end').value=video.currentTime.toFixed(1)};
+$('playClip').onclick=()=>{if(!video.src)return;let s=Number($('start').value)||0,e=Number($('end').value)||video.duration;video.currentTime=s;video.play();const stop=()=>{if(video.currentTime>=e){video.pause();video.removeEventListener('timeupdate',stop)}};video.addEventListener('timeupdate',stop)};
+['hook','caption','watermark','textSize','textPos','textColor','zoom','bgColor'].forEach(id=>$(id).addEventListener('input',updateOverlay));
+$('volume').oninput=()=>{$('volLabel').textContent=$('volume').value+'%';video.volume=Math.min(1.5,Number($('volume').value)/100)};
+function updateOverlay(){const el=$('overlayPreview');el.innerHTML='';el.style.color=$('textColor').value;el.style.fontSize=$('textSize').value+'px';el.style.top=$('textPos').value==='top'?'10%':$('textPos').value==='center'?'42%':'auto';el.style.bottom=$('textPos').value==='bottom'?'14%':'auto';el.style.transform='scale('+(Number($('zoom').value)/100)+')';el.style.background='transparent';el.style.textShadow='0 3px 8px #000,0 1px 2px #000';el.textContent=[$('hook').value,$('caption').value].filter(Boolean).join('\\n');$('stage').style.background=$('bgColor').value}
+$('reset').onclick=()=>{['hook','caption','watermark'].forEach(id=>$(id).value='');$('start').value=0;$('end').value=video.duration||0;$('ratio').value='9:16';$('resolution').value='1080';$('speed').value='1';$('volume').value=100;$('zoom').value=100;$('textSize').value=36;$('textPos').value='center';$('textColor').value='#ffffff';$('bgColor').value='#000000';video.volume=1;$('volLabel').textContent='100%';updateOverlay();status('Pengaturan edit direset.')};
+async function loadFFmpeg(){
+ if(ffmpegReady)return;
+ status('Memuat encoder MP4 (FFmpeg)…');
+ const {FFmpeg}=await import('https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js');
+ const {toBlobURL}=await import('https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/dist/esm/index.js');
+ ffmpeg=new FFmpeg();
+ ffmpeg.on('progress',({progress})=>{$('bar').style.width=Math.max(0,Math.min(100,progress*100))+'%'});
+ const base='https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.6/dist/umd';
+ await ffmpeg.load({coreURL:await toBlobURL(base+'/ffmpeg-core.js','text/javascript'),wasmURL:await toBlobURL(base+'/ffmpeg-core.wasm','application/wasm')});
+ ffmpegReady=true;
+}
+function drawExportCanvas(){
+ const w=video.videoWidth,h=video.videoHeight;const ratio=$('ratio').value;let outW,outH;
+ if(ratio==='9:16'){outW=720;outH=1280}else if(ratio==='1:1'){outW=1080;outH=1080}else if(ratio==='16:9'){outW=1920;outH=1080}else{outW=w;outH=h}
+ const target=Number($('resolution').value);if(ratio==='9:16'){outW=Math.round(target*9/16);outH=target}else if(ratio==='1:1'){outW=target;outH=target}else if(ratio==='16:9'){outW=Math.round(target*16/9);outH=target}else{const sc=Math.min(1,target/Math.max(w,h));outW=Math.round(w*sc);outH=Math.round(h*sc)}
+ const c=document.createElement('canvas');c.width=outW;c.height=outH;const ctx=c.getContext('2d');
+ function draw(){if(video.ended)return;ctx.fillStyle=$('bgColor').value;ctx.fillRect(0,0,outW,outH);
+ const zoom=Number($('zoom').value)/100;const scale=Math.max(outW/w,outH/h)*zoom;const dw=w*scale,dh=h*scale;ctx.drawImage(video,(outW-dw)/2,(outH-dh)/2,dw,dh);
+ const size=Number($('textSize').value)*outH/720;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle=$('textColor').value;ctx.strokeStyle='rgba(0,0,0,.85)';ctx.lineWidth=Math.max(3,size*.12);ctx.lineJoin='round';ctx.font=`900 ${size}px Arial`;
+ const lines=[$('hook').value,$('caption').value].filter(Boolean).flatMap(t=>t.split('\\n'));const lineH=size*1.25;let y=$('textPos').value==='top'?outH*.14:$('textPos').value==='bottom'?outH*.78:outH*.48;
+ lines.forEach((line,i)=>{ctx.strokeText(line,outW/2,y+i*lineH);ctx.fillText(line,outW/2,y+i*lineH)});
+ const wm=$('watermark').value;if(wm){ctx.font=`bold ${Math.max(16,size*.45)}px Arial`;ctx.textAlign='right';ctx.fillStyle='rgba(255,255,255,.8)';ctx.strokeText(wm,outW-24,outH-28);ctx.fillText(wm,outW-24,outH-28)}
+ if(!video.paused)requestAnimationFrame(draw)}
+ draw();return c;
+}
+$('export').onclick=async()=>{
+ if(!video.src||exporting)return;exporting=true;$('export').disabled=true;$('bar').style.width='0%';
+ try{
+ const start=Math.max(0,Number($('start').value)||0),end=Math.min(video.duration,Number($('end').value)||video.duration);
+ if(end<=start)throw new Error('Waktu akhir harus lebih besar dari waktu mulai.');
+ await loadFFmpeg();
+ const canvas=drawExportCanvas(), stream=canvas.captureStream(30), vstream=video.captureStream();
+ const audio=vstream.getAudioTracks();audio.forEach(t=>stream.addTrack(t));
+ const chunks=[];const rec=new MediaRecorder(stream,{mimeType:'video/webm;codecs=vp9,opus'});
+ const speed=Number($('speed').value)||1;video.playbackRate=speed;video.volume=Math.min(1.5,Number($('volume').value)/100);
+ rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
+ const finished=new Promise(resolve=>rec.onstop=resolve);
+ video.pause();video.currentTime=start;await new Promise(resolve=>video.onseeked=resolve);
+ rec.start(500);await video.play();
+ const stopAt=()=>{if(video.currentTime>=end){video.pause();video.removeEventListener('timeupdate',stopAt);rec.stop()}};
+ video.addEventListener('timeupdate',stopAt);
+ status('Merekam hasil edit… video diproses secara real-time.');
+ await finished;stream.getTracks().forEach(t=>t.stop());video.playbackRate=1;
+ status('Mengonversi ke MP4… jangan tutup tab.');
+ const blob=new Blob(chunks,{type:'video/webm'});await ffmpeg.writeFile('input.webm',new Uint8Array(await blob.arrayBuffer()));
+ const bitrate= $('resolution').value==='1080'?'5M':$('resolution').value==='720'?'3M':'1.5M';
+ await ffmpeg.exec(['-i','input.webm','-c:v','libx264','-preset','ultrafast','-b:v',bitrate,'-af','volume='+String(Number($('volume').value)/100),'-c:a','aac','-b:a','128k','-movflags','+faststart','output.mp4']);
+ const data=await ffmpeg.readFile('output.mp4');const mp4=new Blob([data.buffer],{type:'video/mp4'});const url=URL.createObjectURL(mp4);const a=document.createElement('a');a.href=url;a.download='clipforge-export.mp4';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+ $('bar').style.width='100%';status('Selesai! File MP4 berhasil dibuat.');
+ }catch(err){console.error(err);status('Ekspor gagal: '+(err.message||err)+'. Coba browser desktop terbaru atau video yang lebih pendek.')}
+ finally{exporting=false;$('export').disabled=false}
+};
+video.addEventListener('loadedmetadata',()=>{video.volume=1;updateOverlay()});
+</script></body></html>
