@@ -228,15 +228,14 @@ async function runSmartMp4(){
  exporting=true;$('smartMp4').disabled=true;$('export').disabled=true;$('exportFast').disabled=true;$('bar').style.width='0%';
  try{
   status('Menyiapkan jalur MP4 cepat: mempertahankan stream asli bila codec kompatibel…');
-  const {Input,BlobSource,Output,Mp4OutputFormat,BufferTarget,StreamTarget,Conversion,ALL_FORMATS}=await import('https://cdn.jsdelivr.net/npm/mediabunny@1.62.1/+esm');
-  let target,saveHandle=null;
+  let saveHandle=null;
   if(typeof window.showSaveFilePicker==='function'){
    saveHandle=await window.showSaveFilePicker({suggestedName:'clipforge-owner-no-watermark.mp4',types:[{description:'Video MP4',accept:{'video/mp4':['.mp4']}}]});
-   target=new StreamTarget(await saveHandle.createWritable(),{chunked:true});
-  }else{
-   if(sourceFile.size>250*1024*1024)throw new Error('File terlalu besar untuk ekspor aman di memori browser ini. Untuk video 30–60 menit, buka ClipForge di Chrome/Edge desktop agar hasil langsung ditulis ke disk.');
-   target=new BufferTarget();
+  }else if(sourceFile.size>250*1024*1024){
+   throw new Error('File terlalu besar untuk ekspor aman di memori browser ini. Untuk video 30–60 menit, buka ClipForge di Chrome/Edge desktop agar hasil langsung ditulis ke disk.');
   }
+  const {Input,BlobSource,Output,Mp4OutputFormat,BufferTarget,StreamTarget,Conversion,ALL_FORMATS}=await import('https://cdn.jsdelivr.net/npm/mediabunny@1.62.1/+esm');
+  const target=saveHandle?new StreamTarget(await saveHandle.createWritable(),{chunked:true}):new BufferTarget();
   const input=new Input({source:new BlobSource(sourceFile),formats:ALL_FORMATS});
   const output=new Output({format:new Mp4OutputFormat({fastStart:saveHandle?false:'in-memory'}),target});
   const conversion=await Conversion.init({input,output,tracks:'primary',copy:{mode:'preferred'},tags:{}});
