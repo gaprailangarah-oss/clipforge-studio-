@@ -272,7 +272,7 @@ $('autoCreate').onclick=async()=>{
  const btn=$('autoCreate'),label=$('autoCreateStatus');
  if(!sourceFile||exporting)return;
  btn.disabled=true;
- const waitFor=(id)=>new Promise((resolve,reject)=>{let n=0;const tick=()=>{if(!$ (id).disabled){resolve();return}if(++n>3600){reject(new Error('Proses terlalu lama.'));return}setTimeout(tick,500)};tick()});
+ const waitFor=(id)=>new Promise((resolve,reject)=>{let n=0;const tick=()=>{if(!$(id).disabled){resolve();return}if(++n>3600){reject(new Error('Proses terlalu lama.'));return}setTimeout(tick,500)};tick()});
  try{
   label.textContent='1/5 • Membuat subtitle otomatis dengan AI…';
   $('autoCaption').click();
