@@ -256,8 +256,9 @@ $('autoCaption').onclick=async()=>{
    for(let k=0;k<chunks.length;k++){
     const item=chunks[k],localStart=Number(item.timestamp?.[0]);
     if(!Number.isFinite(localStart))continue;
-    const nextStart=Number(chunks[k+1]?.timestamp?.[0]);
-    const localEnd=Number.isFinite(Number(item.timestamp?.[1]))?Number(item.timestamp[1]):(Number.isFinite(nextStart)?nextStart:Math.min(end-start,localStart+3));
+    const nextRaw=chunks[k+1]?.timestamp?.[0],nextStart=nextRaw==null?NaN:Number(nextRaw);
+    const endRaw=item.timestamp?.[1];
+    const localEnd=endRaw!=null&&Number.isFinite(Number(endRaw))?Number(endRaw):(Number.isFinite(nextStart)?nextStart:Math.min(end-start,localStart+3));
     const absoluteStart=start+localStart,absoluteEnd=Math.min(duration,start+Math.max(localStart+.15,localEnd));
     const textValue=(item.text||'').trim();
     if(textValue&&absoluteEnd>absoluteStart&&absoluteStart>=lastAcceptedEnd-.35){
