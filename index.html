@@ -348,8 +348,9 @@ $('findClips').onclick=async()=>{
     for(let j=i;j<Math.min(sentences.length,i+5);j++){
      group.push(sentences[j]);
      const first=group[0],last=group[group.length-1],span=last.end-first.start;
+     // Keep candidates close to the requested duration; avoid turning a 15-second Short into a much longer cut.
      if(span<Math.min(12,wanted*.75))continue;
-     if(span>Math.max(35,wanted*1.8))break;
+     if(span>wanted*1.3)break;
      const text=group.map(x=>x.text).join(' ').replace(/\s+/g,' ').trim(),q=text.toLowerCase(),words=text.split(/\s+/).filter(Boolean);
      const opening=(group[0]?.text||'').toLowerCase();
      const hook=/\?|kenapa|mengapa|bagaimana|ternyata|rahasia|bayangkan|jangan|berhenti|tidak pernah|what if|why|how|imagine|never|stop|secret/i.test(opening);
@@ -362,10 +363,12 @@ $('findClips').onclick=async()=>{
      const contrast=/tetapi|namun|justru|padahal|sebaliknya|but|however|although|instead|di sisi lain/i.test(q);
      const specificity=/\d|persen|rupiah|tahun|kali|percent|dollar|million|billion|nomor|number/i.test(q);
      const filler=(q.match(/\b(eee|emmm|anu|kayak|gitu|uh|um|you know|like)\b/g)||[]).length;
-     const durationFit=span>=18&&span<=Math.min(55,wanted*1.35);
+     const durationFit=span>=Math.max(8,wanted*.75)&&span<=wanted*1.25;
      const openingLength=opening.split(/\s+/).filter(Boolean).length;
      const hookPace=openingLength>=4&&openingLength<=18;
-     const raw=(hook?18:0)+(curiosity?14:0)+(emotion?15:0)+(payoff?15:0)+(share?10:0)+(clarity?10:0)+(conversation?8:0)+(contrast?5:0)+(specificity?5:0)+(durationFit?5:0)+(hookPace?5:0)-Math.min(10,filler*2);
+     const endingComplete=/[.!?…]["')\]]?$/.test(last.text);
+     const tooLong=words.length>90;
+     const raw=(hook?18:0)+(curiosity?14:0)+(emotion?15:0)+(payoff?15:0)+(share?10:0)+(clarity?10:0)+(conversation?8:0)+(contrast?5:0)+(specificity?5:0)+(durationFit?5:0)+(hookPace?5:0)+(endingComplete?4:0)-Math.min(10,filler*2)-(tooLong?8:0);
      const score=Math.max(0,Math.min(100,raw));
      const reasons=[hook?'pembuka kuat':null,curiosity?'memancing penasaran':null,emotion?'emosi terasa':null,payoff?'ada hasil/payoff':null,contrast?'kontras/kejutan':null,specificity?'detail spesifik':null].filter(Boolean);
      candidates.push({start:first.start,end:last.end,text,score,parts:group.length,reasons,hookText:group[0]?.text||''});
@@ -376,7 +379,8 @@ $('findClips').onclick=async()=>{
    const picked=[];
    for(const item of candidates){
     const middle=(item.start+item.end)/2;
-    if(picked.every(x=>Math.abs((x.start+x.end)/2-middle)>Math.max(18,wanted*.85))){
+    // Enforce non-overlapping clips with a short breathing gap, not merely distant midpoints.
+    if(picked.every(x=>item.start>=x.end+2||item.end<=x.start-2)){
      picked.push(item);if(picked.length===5)break;
     }
    }
