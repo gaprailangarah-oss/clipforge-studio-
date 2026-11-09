@@ -81,7 +81,7 @@ details.advanced .controls{margin:0 0 12px}
 #captionTool>label:first-of-type,
 #captionTool>input#hook{display:none}
 #captionTool>h2{margin-bottom:8px}
-#captionTool #caption{min-height:74px}
+#captionTranscript{min-height:54px;padding:10px;border:1px solid var(--line);border-radius:9px;background:#0d121a;color:#cbd5e1;font-size:12px;line-height:1.6;white-space:pre-wrap;max-height:130px;overflow:auto}
 #captionTool .hint{display:none}
 #captionTool .row.between{display:none}
 #autoCreatorTool{margin-top:12px!important;padding:14px!important}
@@ -95,7 +95,7 @@ details.advanced .controls{margin:0 0 12px}
  #exportTool>.row{display:flex;flex-direction:column;width:100%}
  #export{width:100%;min-height:44px}
  #autoEditPreview{min-height:48px}
- #captionTool #caption{font-size:16px}
+ #captionTranscript{font-size:13px}
 }
 </style></head>
 <body>
@@ -138,11 +138,11 @@ details.advanced .controls{margin:0 0 12px}
  <section class="panel" id="captionTool"><h2>🎙️ AI Caption & Hook</h2>
   <label>Judul / hook</label><input id="hook" type="text" placeholder="Tulis hook yang menarik...">
   <label>Bahasa audio</label><select id="transcriptLanguage"><option value="indonesian" selected>Bahasa Indonesia</option><option value="english">English</option><option value="auto">Deteksi otomatis</option></select>
-  <label>Subtitle / caption</label><textarea id="caption" rows="3" placeholder="Tulis subtitle atau kalimat pendukung..."></textarea>
+  <label>Transkrip otomatis</label><div id="captionTranscript" aria-live="polite">Transkrip akan muncul otomatis setelah Auto Edit dijalankan.</div>
   <div class="row" style="margin-top:9px"><button id="autoCaption" class="primary smallbtn">🎙️ Buat Auto Caption</button><button id="findHooks" class="smallbtn">🎯 Cari Hook Terbaik</button></div>
-  <div id="captionStatus" class="muted" style="margin-top:8px">Subtitle akan dibuat otomatis saat Auto Edit dijalankan.</div>
+  <div id="captionStatus" class="muted" style="margin-top:8px">Subtitle dibuat otomatis dari audio video. Tidak perlu mengetik subtitle.</div>
   <div id="hookSuggestions" class="cliplist"></div>
-  <div class="hint" style="margin-top:8px">Pemrosesan dilakukan di perangkat. Waktu proses bergantung pada durasi video, memori, dan kemampuan iPhone.</div>
+  <div class="hint" style="margin-top:8px">Audio dipilih dari kanal paling jelas, difilter untuk rentang suara manusia, lalu dinormalisasi sebelum Whisper memprosesnya. Semua berjalan di perangkat.</div>
   <div class="row between" style="margin-top:10px"><span class="muted">Bantu optimalkan teks</span><button id="autoEmoji" class="smallbtn">✨ Auto Emoji</button></div>
   <div class="hookmeter">
    <div class="meterhead"><b>🎯 Hook Meter</b><b id="hookScore">0/100</b></div>
@@ -157,7 +157,7 @@ details.advanced .controls{margin:0 0 12px}
   <h2>📁 Proyek & subtitle</h2>
   <div class="muted" style="margin-bottom:10px">Simpan pengaturan edit dan transkrip sebagai file proyek lokal. Video sumber tetap berada di perangkatmu.</div>
   <div class="row"><button id="saveProject" class="smallbtn">Simpan proyek</button><button id="loadProjectBtn" class="smallbtn">Buka proyek</button><input id="projectFile" type="file" accept=".json,application/json" hidden></div>
-  <div class="row" style="margin-top:8px"><button id="exportSrt" class="smallbtn">Unduh subtitle SRT</button><button id="importSrtBtn" class="smallbtn">Impor SRT</button><input id="srtFile" type="file" accept=".srt,text/plain" hidden></div>
+
   <div id="projectStatus" class="muted" style="margin-top:9px">Backup proyek tidak menyertakan file video agar ukuran tetap kecil.</div>
  </section>
  <section class="panel" id="visualTool"><h2>⚙️ Tampilan & audio</h2>
@@ -176,14 +176,14 @@ document.querySelectorAll('#projectTool>h2,#visualTool>h2').forEach(h=>h.addEven
 document.querySelectorAll('[data-jump]').forEach(b=>b.addEventListener('click',()=>$(b.dataset.jump)?.scrollIntoView({behavior:'smooth',block:'start'})));
 const video=$('video'), fileInput=$('file'); let sourceFile=null, sourceUrl=null, ffmpeg=null, ffmpegReady=false, exporting=false;
 function status(s){$('status').textContent=s}
-function setVideo(src,file=null){$('smartMp4').disabled=!file;$('autoCreate').disabled=!file;$('autoEditPreview').disabled=!file;subtitleSegments=[];$('hookSuggestions').innerHTML='';$('captionStatus').textContent='Pilih video, lalu buat Auto Caption.';if(sourceUrl)URL.revokeObjectURL(sourceUrl);sourceFile=file;sourceUrl=src;video.src=src;video.style.display='block';$('empty').style.display='none';$('export').disabled=false;$('exportFast').disabled=false;$('downloadSource').disabled=!file;video.onloadedmetadata=()=>{$('start').value=0;$('end').value=video.duration.toFixed(1);$('durationLabel').textContent='Durasi: '+video.duration.toFixed(1)+' detik';status('Video siap diedit.');updateOverlay()};video.onerror=()=>status('Video gagal dimuat. Periksa URL atau dukungan CORS.')}
+function setVideo(src,file=null){$('smartMp4').disabled=!file;$('autoCreate').disabled=!file;$('autoEditPreview').disabled=!file;subtitleSegments=[];$('hookSuggestions').innerHTML='';$('captionStatus').textContent='Pilih video untuk membuat transkrip otomatis.';if(sourceUrl)URL.revokeObjectURL(sourceUrl);sourceFile=file;sourceUrl=src;video.src=src;video.style.display='block';$('empty').style.display='none';$('export').disabled=false;$('exportFast').disabled=false;$('downloadSource').disabled=!file;video.onloadedmetadata=()=>{$('start').value=0;$('end').value=video.duration.toFixed(1);$('durationLabel').textContent='Durasi: '+video.duration.toFixed(1)+' detik';status('Video siap diedit.');updateOverlay()};video.onerror=()=>status('Video gagal dimuat. Periksa URL atau dukungan CORS.')}
 fileInput.addEventListener('change',e=>{const f=e.target.files[0];if(f)setVideo(URL.createObjectURL(f),f)});
 $('loadUrl').onclick=()=>{const u=prompt('Tempel direct URL file video MP4/WebM:');if(u)setVideo(u)};
 $('downloadSource').onclick=()=>{if(!sourceFile)return;const a=document.createElement('a');a.href=sourceUrl;a.download=sourceFile.name;a.click()};
 $('setIn').onclick=()=>{$('start').value=video.currentTime.toFixed(1)};
 $('setOut').onclick=()=>{$('end').value=video.currentTime.toFixed(1)};
 $('playClip').onclick=()=>{if(!video.src)return;let s=Number($('start').value)||0,e=Number($('end').value)||video.duration;video.currentTime=s;video.play();const stop=()=>{if(video.currentTime>=e){video.pause();video.removeEventListener('timeupdate',stop)}};video.addEventListener('timeupdate',stop)};
-['hook','caption','watermark','textSize','textPos','textColor','zoom','bgColor'].forEach(id=>$(id).addEventListener('input',updateOverlay));
+['hook','watermark','textSize','textPos','textColor','zoom','bgColor'].forEach(id=>$(id).addEventListener('input',updateOverlay));
 function chooseEmoji(text){
  const s=(text||'').toLowerCase();
  const groups=[
@@ -225,10 +225,10 @@ function updateHookMeter(){
 }
 $('hook').addEventListener('input',updateHookMeter);
 $('autoEmoji').onclick=()=>{
- const hook=$('hook').value,caption=$('caption').value;
+ const hook=$('hook').value;
  if(!hook.trim()&&!caption.trim()&&!subtitleSegments.length){ $('hookFeedback').textContent='Buat subtitle atau isi hook/caption dulu, lalu coba Auto Emoji.';return; }
  if(hook.trim())$('hook').value=addEmojiToText(hook);
- if(caption.trim())$('caption').value=caption.split(/\n/).map(line=>addEmojiToText(line)).join('\n');
+
  if(subtitleSegments.length)subtitleSegments=subtitleSegments.map(seg=>({...seg,text:addEmojiToText(seg.text)}));
  updateOverlay();updateHookMeter();
 };
@@ -244,7 +244,7 @@ function activeSubtitle(t){
  }
  return '';
 }
-function updateOverlay(){const el=$('overlayPreview');el.innerHTML='';el.style.color=$('textColor').value;el.style.fontSize=$('textSize').value+'px';el.style.top=$('textPos').value==='top'?'10%':$('textPos').value==='center'?'42%':'auto';el.style.bottom=$('textPos').value==='bottom'?'14%':'auto';el.style.transform='scale('+(Number($('zoom').value)/100)+')';el.style.background='transparent';el.style.textShadow='0 3px 8px #000,0 1px 2px #000';const timed=activeSubtitle(video.currentTime);el.textContent=[$('hook').value,timed||(!subtitleSegments.length?$('caption').value:'')].filter(Boolean).join('\n');$('stage').style.background=$('bgColor').value}
+function updateOverlay(){const el=$('overlayPreview');el.innerHTML='';el.style.color=$('textColor').value;el.style.fontSize=$('textSize').value+'px';el.style.top=$('textPos').value==='top'?'10%':$('textPos').value==='center'?'42%':'auto';el.style.bottom=$('textPos').value==='bottom'?'14%':'auto';el.style.transform='scale('+(Number($('zoom').value)/100)+')';el.style.background='transparent';el.style.textShadow='0 3px 8px #000,0 1px 2px #000';const timed=activeSubtitle(video.currentTime);el.textContent=[$('hook').value,timed].filter(Boolean).join('\n');$('stage').style.background=$('bgColor').value}
 video.addEventListener('timeupdate',updateOverlay);
 async function getWhisper(){
  if(whisperPipeline)return whisperPipeline;
@@ -295,13 +295,37 @@ $('autoCaption').onclick=async()=>{
    const end=Math.min(duration,(part+1)*windowSeconds);
    const sourceStart=Math.floor(start*rate),sourceEnd=Math.min(decoded.length,Math.ceil(end*rate));
    const segment=new Float32Array(Math.floor((sourceEnd-sourceStart)/ratio));
+   // Select the clearest channel to avoid phase cancellation from stereo averaging.
+   let bestChannel=0,bestRms=-1;
+   for(let ch=0;ch<channels.length;ch++){
+    let energy=0,count=0;
+    for(let p=sourceStart;p<sourceEnd;p+=Math.max(1,Math.floor(rate/8))){const v=channels[ch][p]||0;energy+=v*v;count++}
+    const rms=count?Math.sqrt(energy/count):0;
+    if(rms>bestRms){bestRms=rms;bestChannel=ch}
+   }
+   const selected=channels[bestChannel];
+   let mean=0;
    for(let i=0;i<segment.length;i++){
     const pos=sourceStart+i*ratio,left=Math.floor(pos),right=Math.min(left+1,sourceEnd-1),mix=pos-left;
-    let sum=0;for(const ch of channels)sum+=ch[left]+(ch[right]-ch[left])*mix;
-    segment[i]=sum/channels.length;
+    segment[i]=selected[left]+(selected[right]-selected[left])*mix;
+    mean+=segment[i];
    }
-   let peak=0;for(let i=0;i<segment.length;i++)peak=Math.max(peak,Math.abs(segment[i]));
-   if(peak>0.00001&&peak<0.85){const gain=Math.min(8,0.85/peak);for(let i=0;i<segment.length;i++)segment[i]=Math.max(-1,Math.min(1,segment[i]*gain));}
+   mean/=Math.max(1,segment.length);
+   // Remove DC offset and keep the main human-speech frequency band.
+   const hpAlpha=Math.exp(-2*Math.PI*80/16000),lpAlpha=Math.exp(-2*Math.PI*7600/16000);
+   let previousInput=0,previousHigh=0,low=0,peak=0;
+   for(let i=0;i<segment.length;i++){
+    const input=segment[i]-mean;
+    const high=hpAlpha*(previousHigh+input-previousInput);
+    previousInput=input;previousHigh=high;
+    low+=(1-lpAlpha)*(high-low);
+    segment[i]=low;peak=Math.max(peak,Math.abs(low));
+   }
+   // Normalize quiet speech conservatively without aggressively boosting silence.
+   if(peak>0.0001){
+    const gain=Math.min(10,0.92/peak);
+    for(let i=0;i<segment.length;i++)segment[i]=Math.max(-1,Math.min(1,segment[i]*gain));
+   }
    $('captionStatus').textContent='Whisper AI memproses bagian '+(part+1)+'/'+total+' • '+Math.round(start/60)+'–'+Math.round(end/60)+' menit…';
    const language=$('transcriptLanguage')?.value||'indonesian';
    const result=await transcriber(segment,{sampling_rate:16000,return_timestamps:true,chunk_length_s:30,stride_length_s:5,language:language==='auto'?undefined:language,task:'transcribe'});
@@ -325,14 +349,14 @@ $('autoCaption').onclick=async()=>{
    }
   }
   subtitleSegments=all.sort((x,y)=>x.start-y.start).map(seg=>({...seg,text:addEmojiToText(seg.text)}));
-  $('caption').value=subtitleSegments.map(x=>x.text).join(' ');
+  $('captionTranscript').textContent=subtitleSegments.map(x=>x.text).join(' ');
   $('captionStatus').textContent='Selesai: '+subtitleSegments.length+' segmen subtitle dari '+Math.round(duration/60)+' menit audio. Whisper Base multilingual dengan audio 16 kHz yang dinormalisasi digunakan.';
   updateOverlay();
  }catch(err){$('captionStatus').textContent='Auto Caption gagal: '+(err.message||err)+'. Coba video lebih pendek atau gunakan komputer dengan RAM lebih besar.'}
  finally{if(ac)await ac.close().catch(()=>{});btn.disabled=false}
 };
 function sentenceHooks(text){const sentences=(text||'').replace(/\s+/g,' ').split(/(?<=[.!?])\s+/).map(s=>s.trim()).filter(s=>s.length>=18);const ranked=sentences.map(s=>{let score=0;if(/[?]/.test(s))score+=3;if(/ternyata|rahasia|fakta|mengejutkan|mustahil|jarang|kesalahan|jangan|berubah|terbesar|pertama|bahaya|aneh|percaya|bayangkan|why|secret|mistake|shocking|never/i.test(s))score+=3;if(/\d/.test(s))score+=2;if(/tetapi|namun|justru|padahal|sebaliknya|but|however/i.test(s))score+=2;if(s.length>=35&&s.length<=120)score+=2;if(/kamu|anda|ternyata|ini|begini|kenapa|mengapa/i.test(s))score+=1;return {text:s,score}}).sort((a,b)=>b.score-a.score);return ranked.slice(0,5)}
-$('findHooks').onclick=()=>{const text=subtitleSegments.length?subtitleSegments.map(s=>s.text).join(' '):$('caption').value;const results=sentenceHooks(text);const box=$('hookSuggestions');box.innerHTML='';if(!results.length){$('captionStatus').textContent='Belum ada kalimat yang cukup panjang. Jalankan Auto Caption atau tempel transkrip ke kolom caption.';return}box.innerHTML=results.map((x,i)=>'<div class="clipitem"><b>Rekomendasi '+(i+1)+'</b><div class="muted">Skor pola hook: '+x.score+'/13</div><div style="margin-top:6px;line-height:1.45">'+x.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div><button class="smallbtn" data-hook="'+i+'">Pakai sebagai hook</button></div>').join('');box.querySelectorAll('[data-hook]').forEach(b=>b.onclick=()=>{$('hook').value=results[Number(b.dataset.hook)].text;updateHookMeter();updateOverlay()});$('captionStatus').textContent='Ditemukan '+results.length+' kandidat. Skor berdasarkan pola bahasa, bukan jaminan viral.'};
+$('findHooks').onclick=()=>{const text=subtitleSegments.map(s=>s.text).join(' ');const results=sentenceHooks(text);const box=$('hookSuggestions');box.innerHTML='';if(!results.length){$('captionStatus').textContent='Belum ada kalimat yang cukup panjang. Jalankan Auto Edit agar AI membuat transkrip.';return}box.innerHTML=results.map((x,i)=>'<div class="clipitem"><b>Rekomendasi '+(i+1)+'</b><div class="muted">Skor pola hook: '+x.score+'/13</div><div style="margin-top:6px;line-height:1.45">'+x.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div><button class="smallbtn" data-hook="'+i+'">Pakai sebagai hook</button></div>').join('');box.querySelectorAll('[data-hook]').forEach(b=>b.onclick=()=>{$('hook').value=results[Number(b.dataset.hook)].text;updateHookMeter();updateOverlay()});$('captionStatus').textContent='Ditemukan '+results.length+' kandidat. Skor berdasarkan pola bahasa, bukan jaminan viral.'};
 
 $('findClips').onclick=async()=>{
  if(!video.src||!Number.isFinite(video.duration)){ $('clipStatus').textContent='Pilih video terlebih dahulu.';return; }
@@ -439,7 +463,7 @@ $('findClips').onclick=async()=>{
  finally{video.currentTime=oldTime;if(wasPlaying)video.play().catch(()=>{});btn.disabled=false}
 };
 
-$('reset').onclick=()=>{subtitleSegments=[];$('hookSuggestions').innerHTML='';$('captionStatus').textContent='Subtitle direset.';['hook','caption','watermark'].forEach(id=>$(id).value='');$('start').value=0;$('end').value=video.duration||0;$('ratio').value='9:16';$('resolution').value='1080';$('quality').value='standard';$('speed').value='1';$('volume').value=100;$('zoom').value=100;$('textSize').value=36;$('textPos').value='center';$('textColor').value='#ffffff';$('bgColor').value='#000000';video.volume=1;$('volLabel').textContent='100%';updateOverlay();status('Pengaturan edit direset.')};
+$('reset').onclick=()=>{subtitleSegments=[];$('hookSuggestions').innerHTML='';$('captionStatus').textContent='Subtitle direset.';['hook','watermark'].forEach(id=>$(id).value='');$('start').value=0;$('end').value=video.duration||0;$('ratio').value='9:16';$('resolution').value='1080';$('quality').value='standard';$('speed').value='1';$('volume').value=100;$('zoom').value=100;$('textSize').value=36;$('textPos').value='center';$('textColor').value='#ffffff';$('bgColor').value='#000000';video.volume=1;$('volLabel').textContent='100%';updateOverlay();status('Pengaturan edit direset.')};
 async function loadFFmpeg(){
  if(ffmpegReady)return;
  status('Memuat encoder MP4 (FFmpeg)…');
@@ -466,7 +490,7 @@ function drawExportCanvas(){
  function draw(){if(video.ended||!exporting)return;ctx.fillStyle=$('bgColor').value;ctx.fillRect(0,0,outW,outH);
  const zoom=Number($('zoom').value)/100;const scale=Math.max(outW/w,outH/h)*zoom;const dw=w*scale,dh=h*scale;ctx.drawImage(video,(outW-dw)/2,(outH-dh)/2,dw,dh);
  const theme=$('captionTheme')?.value||'bold';const size=Number($('textSize').value)*outH/720;ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
- const timed=activeSubtitle(video.currentTime);const captionParts=[$('hook').value,timed||(!subtitleSegments.length?$('caption').value:'')].filter(Boolean).flatMap(t=>t.split('\n'));let y=$('textPos').value==='top'?outH*.14:$('textPos').value==='bottom'?outH*.78:outH*.48;
+ const timed=activeSubtitle(video.currentTime);const captionParts=[$('hook').value,timed].filter(Boolean).flatMap(t=>t.split('\n'));let y=$('textPos').value==='top'?outH*.14:$('textPos').value==='bottom'?outH*.78:outH*.48;
  const palette={bold:{fill:'#ffffff',stroke:'#111111',accent:'#ffe45c'},clean:{fill:'#ffffff',stroke:'#000000',accent:'#ffffff'},neon:{fill:'#72f7ff',stroke:'#07121e',accent:'#72f7ff'},creator:{fill:'#ffffff',stroke:'#111827',accent:'#9b8cff'},pink:{fill:'#ffb6df',stroke:'#351026',accent:'#ff65bd'}}[theme]||{fill:'#ffffff',stroke:'#111111',accent:'#ffe45c'};
  ctx.font=`900 ${size}px Arial`;
  const maxLineWidth=outW*.88,lines=[];
@@ -488,7 +512,7 @@ function drawExportCanvas(){
 
 async function runSmartMp4(){
  if(!sourceFile||exporting)return;
- const unchanged=$('ratio').value==='original'&&Number($('zoom').value)===100&&Number($('speed').value)===1&&!$('hook').value.trim()&&!$('caption').value.trim()&&!$('watermark').value.trim()&&Number($('start').value||0)<0.05&&Math.abs(Number($('end').value||video.duration)-video.duration)<0.2;
+ const unchanged=$('ratio').value==='original'&&Number($('zoom').value)===100&&Number($('speed').value)===1&&!$('hook').value.trim()&&!$('watermark').value.trim()&&Number($('start').value||0)<0.05&&Math.abs(Number($('end').value||video.duration)-video.duration)<0.2;
  if(!unchanged){
   status('Pengaturan edit terdeteksi. Mengaktifkan ekspor MP4 kompatibel fitur: caption, Auto Emoji, teks, watermark opsional, trim, crop, rasio, zoom, volume, dan kecepatan. Proses ini melakukan render ulang sehingga tidak secepat mode salin langsung.');
   await runExport('mp4');
@@ -534,7 +558,7 @@ $('autoEditPreview').onclick=async()=>{
   if(!subtitleSegments.length){$('autoCaption').click();await waitFor('autoCaption');}
   if(!subtitleSegments.length)throw new Error('Subtitle belum berhasil dibuat. Pastikan video memiliki audio yang jelas.');
   subtitleSegments=subtitleSegments.map(seg=>({...seg,text:addEmojiToText(seg.text)}));
-  $('caption').value=subtitleSegments.map(x=>x.text).join(' ');
+  $('captionTranscript').textContent=subtitleSegments.map(x=>x.text).join(' ');
   updateOverlay();
   label.textContent='2/4 • Mencari hook terbaik dari transkrip…';
   $('findHooks').click();
@@ -549,7 +573,7 @@ $('autoEditPreview').onclick=async()=>{
   video.currentTime=Number(clip.start)||0;
   updateHookMeter();updateOverlay();
   label.textContent='Preview siap: subtitle + emoji sudah diterapkan, hook dipilih, dan momen terbaik dimuat. Kamu bisa mengubah teks, waktu, rasio, serta tema sebelum mengekspor.';
-  $('captionStatus').textContent='Subtitle dapat ditinjau pada preview saat video diputar. Tekan Auto Emoji lagi jika ingin menerapkan emoji ke subtitle.';
+  $('captionStatus').textContent='Caption mengikuti audio secara otomatis dan tampil sesuai timestamp.';
  }catch(err){label.textContent='Auto Edit gagal: '+err.message;$('captionStatus').textContent=err.message}
  finally{btn.disabled=!sourceFile}
 };
@@ -732,7 +756,7 @@ $('iphonePart').onclick=async()=>{
 video.addEventListener('loadedmetadata',()=>{video.volume=1;updateOverlay();iphoneNextStart=null;iphonePartNumber=0;$('iphonePart').disabled=false;});
 
 // Local project backup: settings + transcript only; media never leaves the device.
-const projectFields=['start','end','hook','caption','watermark','textSize','textPos','textColor','ratio','resolution','quality','speed','volume','zoom','captionTheme','bgColor','clipLength'];
+const projectFields=['start','end','hook','watermark','textSize','textPos','textColor','ratio','resolution','quality','speed','volume','zoom','captionTheme','bgColor','clipLength'];
 function downloadLocalFile(name,blob){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000)}
 $('saveProject').onclick=()=>{
  const fields={};projectFields.forEach(id=>{if($(id))fields[id]=$(id).value});
@@ -749,6 +773,7 @@ $('projectFile').onchange=async e=>{
   Object.entries(p.fields).forEach(([id,value])=>{if($(id)&&value!==undefined)$(id).value=value});
   subtitleSegments=Array.isArray(p.subtitles)?p.subtitles.filter(x=>Number.isFinite(Number(x.start))&&Number.isFinite(Number(x.end))&&typeof x.text==='string').sort((a,b)=>a.start-b.start):[];
   window.clipforgeSuggestedClips=Array.isArray(p.suggestedClips)?p.suggestedClips:[];
+  $('captionTranscript').textContent=subtitleSegments.map(x=>x.text).join(' ');
   updateOverlay();updateHookMeter();
   $('projectStatus').textContent='Proyek berhasil dimuat. '+subtitleSegments.length+' segmen subtitle dipulihkan. Pilih ulang video sumber yang sama jika belum dimuat.';
   if($('clipsList')&&window.clipforgeSuggestedClips.length){
@@ -758,22 +783,5 @@ $('projectFile').onchange=async e=>{
  }catch(err){$('projectStatus').textContent='Gagal membuka proyek: '+err.message}
  e.target.value='';
 };
-function toSrtTime(seconds){const ms=Math.max(0,Math.round(seconds*1000)),h=Math.floor(ms/3600000),m=Math.floor(ms%3600000/60000),sec=Math.floor(ms%60000/1000),mill=ms%1000;return String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(sec).padStart(2,'0')+','+String(mill).padStart(3,'0')}
-$('exportSrt').onclick=()=>{
- if(!subtitleSegments?.length){$('projectStatus').textContent='Belum ada subtitle. Jalankan Auto Caption terlebih dahulu.';return}
- const body=subtitleSegments.map((x,i)=>(i+1)+'\n'+toSrtTime(x.start)+' --> '+toSrtTime(x.end)+'\n'+x.text).join('\n\n');
- downloadLocalFile('clipforge-subtitle.srt',new Blob([body],{type:'text/plain;charset=utf-8'}));
- $('projectStatus').textContent='Subtitle SRT berhasil diunduh.';
-};
-$('importSrtBtn').onclick=()=>$('srtFile').click();
-$('srtFile').onchange=async e=>{
- const f=e.target.files?.[0];if(!f)return;
- try{
-  const raw=await f.text(),blocks=raw.replace(/\r/g,'').trim().split(/\n\s*\n/),parsed=[];
-  for(const block of blocks){const lines=block.split('\n'),time=lines.find(x=>x.includes('-->'));if(!time)continue;const m=time.match(/(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})[,.](\d{3})/);if(!m)continue;const sec=a=>Number(a[1])*3600+Number(a[2])*60+Number(a[3])+Number(a[4])/1000;const at=time.match(/(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})[,.](\d{3})/);const left=sec(at.slice(1,5)),right=sec(at.slice(5,9)),text=lines.slice(lines.indexOf(time)+1).join(' ').trim();if(text&&right>left)parsed.push({start:left,end:right,text})}
-  subtitleSegments=parsed.sort((a,b)=>a.start-b.start);$('caption').value=subtitleSegments.map(x=>x.text).join(' ');updateOverlay();
-  $('projectStatus').textContent='SRT berhasil diimpor: '+parsed.length+' subtitle.';
- }catch(err){$('projectStatus').textContent='Gagal membaca SRT: '+err.message}
- e.target.value='';
-};
+
 </script></body></html>
