@@ -10,7 +10,8 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import yt_dlp
-from fastapi import FastAPI, HTTPException, Request
+import httpx
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, HttpUrl
@@ -135,6 +136,93 @@ async def process_job(job_id: str, video_id: str):
     finally:
         active_job = None
 
+
+
+MAX_CAPTION_AUDIO_BYTES = int(os.getenv("MAX_CAPTION_AUDIO_BYTES", str(80 * 1024 * 1024)))
+
+@app.post("/api/captions/clean")
+async def clean_voice_captions(audio: UploadFile = File(...), language: str = Form("auto")):
+    """Isolate speech from background audio, then return word-timed Scribe captions."""
+    api_key = os.getenv("ELEVENLABS_API_KEY", "").strip()
+    if not api_key:
+        raise HTTPException(503, "Cloud Caption belum dikonfigurasi. Tambahkan ELEVENLABS_API_KEY di Render Environment.")
+    raw = await audio.read(MAX_CAPTION_AUDIO_BYTES + 1)
+    if not raw:
+        raise HTTPException(400, "Audio kosong.")
+    if len(raw) > MAX_CAPTION_AUDIO_BYTES:
+        raise HTTPException(413, "Audio terlalu besar untuk Cloud Caption. Coba video yang lebih pendek.")
+    filename = Path(audio.filename or "clipforge.wav").name
+    mime = audio.content_type or "audio/wav"
+    timeout = httpx.Timeout(300.0, connect=20.0)
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        try:
+            isolated = await client.post(
+                "https://api.elevenlabs.io/v1/audio-isolation",
+                headers={"xi-api-key": api_key},
+                files={"audio": (filename, raw, mime)},
+                data={"file_format": "other"},
+            )
+            if isolated.status_code >= 400:
+                detail = isolated.text[:500]
+                raise HTTPException(isolated.status_code if isolated.status_code < 500 else 502,
+                                    "Audio isolation gagal: " + detail)
+            clean_audio = isolated.content
+            if not clean_audio:
+                raise HTTPException(502, "Layanan pemisahan suara mengembalikan audio kosong.")
+            form = {
+                "model_id": "scribe_v2",
+                "timestamps_granularity": "word",
+                "diarize": "true",
+                "tag_audio_events": "false",
+            }
+            if language and language != "auto":
+                lang_map = {"indonesian": "ind", "english": "eng"}
+                form["language_code"] = lang_map.get(language, language)
+            transcript = await client.post(
+                "https://api.elevenlabs.io/v1/speech-to-text",
+                headers={"xi-api-key": api_key},
+                files={"file": ("isolated-audio.wav", clean_audio, "audio/wav")},
+                data=form,
+            )
+            if transcript.status_code >= 400:
+                detail = transcript.text[:500]
+                raise HTTPException(transcript.status_code if transcript.status_code < 500 else 502,
+                                    "Transkripsi Scribe gagal: " + detail)
+            payload = transcript.json()
+        except httpx.TimeoutException:
+            raise HTTPException(504, "Pemrosesan audio melewati batas waktu. Coba video yang lebih pendek.")
+        except httpx.HTTPError as exc:
+            raise HTTPException(502, "Tidak dapat menghubungi layanan AI audio: " + str(exc)[:250])
+    words = payload.get("words") or []
+    timed = []
+    for item in words:
+        if item.get("type") != "word":
+            continue
+        text = (item.get("text") or "").strip()
+        start, end = item.get("start"), item.get("end")
+        if not text or not isinstance(start, (int, float)) or not isinstance(end, (int, float)) or end <= start:
+            continue
+        timed.append({"text": text, "start": float(start), "end": float(end), "speaker": item.get("speaker_id")})
+    if not timed:
+        raise HTTPException(422, "AI tidak menemukan ucapan yang jelas pada audio ini.")
+    segments = []
+    group = []
+    for word in timed:
+        if group and (len(group) >= 5 or word["start"] - group[-1]["end"] > 0.45):
+            segments.append({"start": group[0]["start"], "end": group[-1]["end"],
+                             "text": " ".join(w["text"] for w in group), "speaker": group[0]["speaker"]})
+            group = []
+        group.append(word)
+        if word["text"].endswith((".", "?", "!")):
+            segments.append({"start": group[0]["start"], "end": group[-1]["end"],
+                             "text": " ".join(w["text"] for w in group), "speaker": group[0]["speaker"]})
+            group = []
+    if group:
+        segments.append({"start": group[0]["start"], "end": group[-1]["end"],
+                         "text": " ".join(w["text"] for w in group), "speaker": group[0]["speaker"]})
+    return {"segments": segments, "text": payload.get("text", ""),
+            "language": payload.get("language_code"), "word_count": len(timed),
+            "provider": "ElevenLabs Audio Isolation + Scribe v2"}
 
 @app.get("/api/health")
 async def health():
