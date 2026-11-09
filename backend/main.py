@@ -2,6 +2,7 @@ import asyncio
 import ipaddress
 import os
 import re
+import shutil
 import tempfile
 import time
 from collections import defaultdict
@@ -12,6 +13,7 @@ import yt_dlp
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from starlette.background import BackgroundTask
 from pydantic import BaseModel, HttpUrl
 
 app = FastAPI(title="ClipForge YouTube API", version="1.0.0")
@@ -87,7 +89,8 @@ async def download_youtube(payload: YouTubeRequest, request: Request):
     if download_semaphore.locked():
         raise HTTPException(429, "Server sedang memproses video lain. Coba lagi sebentar.")
     async with download_semaphore:
-        with tempfile.TemporaryDirectory(prefix="clipforge-") as temp_dir:
+        temp_dir = tempfile.mkdtemp(prefix="clipforge-")
+        try:
             output_template = str(Path(temp_dir) / "%(id)s.%(ext)s")
             options = {
                 "format": "best[ext=mp4][height<=1080]/best[height<=1080]/best",
@@ -115,7 +118,7 @@ async def download_youtube(payload: YouTubeRequest, request: Request):
             except HTTPException:
                 raise
             except Exception as exc:
-                detail = str(exc).replace("\n", " ")[:260]
+                detail = str(exc).replace("\\n", " ")[:260]
                 raise HTTPException(502, f"YouTube tidak dapat diambil saat ini. Coba video publik lain atau unggah file sendiri. Detail: {detail}")
             candidates = [p for p in Path(temp_dir).iterdir() if p.is_file() and p.suffix.lower() in {".mp4", ".mkv", ".webm", ".mov"}]
             if not candidates:
@@ -124,10 +127,13 @@ async def download_youtube(payload: YouTubeRequest, request: Request):
             size = file_path.stat().st_size
             if size > MAX_FILE_BYTES:
                 raise HTTPException(413, "Ukuran video melebihi batas 500 MB.")
-            # FileResponse completes before TemporaryDirectory cleanup when the response is sent.
             return FileResponse(
                 str(file_path),
                 media_type="video/mp4" if file_path.suffix.lower() == ".mp4" else "application/octet-stream",
                 filename=f"clipforge-{video_id}{file_path.suffix}",
                 headers={"X-ClipForge-Video-Id": video_id, "X-ClipForge-File-Size": str(size)},
+                background=BackgroundTask(shutil.rmtree, temp_dir, ignore_errors=True),
             )
+        except Exception:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            raise
