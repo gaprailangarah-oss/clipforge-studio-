@@ -307,13 +307,15 @@ $('autoCaption').onclick=async()=>{
    const end=Math.min(duration,(part+1)*windowSeconds);
    const sourceStart=Math.floor(start*rate),sourceEnd=Math.min(decoded.length,Math.ceil(end*rate));
    const segment=new Float32Array(Math.floor((sourceEnd-sourceStart)/ratio));
-   // Select the clearest channel to avoid phase cancellation from stereo averaging.
-   let bestChannel=0,bestRms=-1;
+   // Prefer speech-band energy instead of choosing only the loudest noisy channel.
+   let bestChannel=0,bestScore=-1;
    for(let ch=0;ch<channels.length;ch++){
-    let energy=0,count=0;
-    for(let p=sourceStart;p<sourceEnd;p+=Math.max(1,Math.floor(rate/8))){const v=channels[ch][p]||0;energy+=v*v;count++}
-    const rms=count?Math.sqrt(energy/count):0;
-    if(rms>bestRms){bestRms=rms;bestChannel=ch}
+    const data=channels[ch];let energy=0,highEnergy=0,previous=0,count=0;
+    const stride=Math.max(1,Math.floor(rate/100));
+    for(let p=sourceStart;p<sourceEnd;p+=stride){const v=data[p]||0,hp=v-previous*.94;previous=v;energy+=v*v;highEnergy+=hp*hp;count++}
+    const rms=count?Math.sqrt(energy/count):0,highRms=count?Math.sqrt(highEnergy/count):0;
+    const score=rms>.00005?Math.min(rms,highRms*2.2):0;
+    if(score>bestScore){bestScore=score;bestChannel=ch}
    }
    const selected=channels[bestChannel];
    let mean=0;
@@ -333,17 +335,15 @@ $('autoCaption').onclick=async()=>{
     low+=(1-lpAlpha)*(high-low);
     segment[i]=low;peak=Math.max(peak,Math.abs(low));
    }
-   // Speech-aware level correction: lift low/medium speech by RMS, while
-   // keeping peaks below clipping and avoiding amplification of near-silence.
-   if(peak>0.0001){
-    let energy=0;
-    for(let i=0;i<segment.length;i++)energy+=segment[i]*segment[i];
+   // Gently attenuate low-level background between speech sounds, then normalize for Whisper.
+   if(peak>.00005){
+    const frame=Math.round(16000*.02),levels=[];
+    for(let p=0;p<segment.length;p+=frame){let e=0,count=Math.min(frame,segment.length-p);for(let j=0;j<count;j++)e+=segment[p+j]*segment[p+j];levels.push(Math.sqrt(e/Math.max(1,count)))}
+    const sorted=[...levels].sort((a,b)=>a-b),noiseFloor=sorted[Math.floor((sorted.length-1)*.18)]||0,threshold=Math.max(.0008,noiseFloor*1.45);
+    for(let f=0;f<levels.length;f++){const level=levels[f],attenuation=level<threshold?Math.max(.32,level/Math.max(threshold,.0001))**.7:1,from=f*frame,to=Math.min(segment.length,from+frame);for(let k=from;k<to;k++)segment[k]*=attenuation}
+    let energy=0;peak=0;for(let k=0;k<segment.length;k++){energy+=segment[k]*segment[k];peak=Math.max(peak,Math.abs(segment[k]))}
     const rms=Math.sqrt(energy/Math.max(1,segment.length));
-    if(rms>0.008){
-     let gain=Math.min(12,0.14/rms);
-     gain=Math.min(gain,0.96/peak);
-     for(let i=0;i<segment.length;i++)segment[i]=Math.max(-1,Math.min(1,segment[i]*gain));
-    }
+    if(rms>.0015){let gain=Math.min(18,.13/rms);gain=Math.min(gain,.96/Math.max(peak,.0001));for(let k=0;k<segment.length;k++)segment[k]=Math.max(-1,Math.min(1,segment[k]*gain))}
    }
    $('captionStatus').textContent='Whisper AI memproses bagian '+(part+1)+'/'+total+' • '+Math.round(start/60)+'–'+Math.round(end/60)+' menit…';
    const language=$('transcriptLanguage')?.value||'indonesian';
@@ -355,9 +355,9 @@ $('autoCaption').onclick=async()=>{
    }
    // Preserve genuine Whisper text if this browser runtime omits timestamp chunks.
    if(!chunks.length&&(result.text||'').trim()){
-    const sentences=(result.text||'').replace(/\\s+/g,' ').match(/[^.!?]+[.!?]?/g)||[result.text];
+    const sentences=(result.text||'').replace(/\s+/g,' ').match(/[^.!?]+[.!?]?/g)||[result.text];
     const usable=sentences.map(x=>x.trim()).filter(Boolean);
-    const weights=usable.map(x=>Math.max(1,x.split(/\\s+/).length));
+    const weights=usable.map(x=>Math.max(1,x.split(/\s+/).length));
     const totalWeight=weights.reduce((a,b)=>a+b,0)||1;
     let cursor=0;
     for(let j=0;j<usable.length;j++){
@@ -365,6 +365,8 @@ $('autoCaption').onclick=async()=>{
      chunks.push({text:usable[j],timestamp:[cursor,cursor+span]});cursor+=span;
     }
    }
+   const validTimes=chunks.some(item=>item.timestamp?.[0]!=null&&Number.isFinite(Number(item.timestamp[0])));
+   if(chunks.length&&!validTimes){const usable=chunks.map(x=>(x.text||'').trim()).filter(Boolean),weights=usable.map(x=>Math.max(1,x.split(/\s+/).length)),sum=weights.reduce((a,b)=>a+b,0)||1;let cursor=0;chunks.length=0;for(let j=0;j<usable.length;j++){const span=(end-start)*weights[j]/sum;chunks.push({text:usable[j],timestamp:[cursor,cursor+span]});cursor+=span}}
    for(let k=0;k<chunks.length;k++){
     const item=chunks[k],localStart=Number(item.timestamp?.[0]);
     if(!Number.isFinite(localStart))continue;
