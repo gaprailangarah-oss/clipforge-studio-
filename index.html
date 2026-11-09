@@ -293,7 +293,7 @@ $('findClips').onclick=async()=>{
     }
    }
    if(picked.length){
-    window.clipforgeSuggestedClips=picked.map((x,i)=>({name:'Momen '+(i+1),start:x.start,end:x.end,score:x.score,text:x.text}));
+    window.clipforgeSuggestedClips=picked.map((x,i)=>({name:'Momen '+(i+1),start:x.start,end:x.end,score:x.score,text:x.text,hookText:x.hookText||'',reasons:x.reasons||[]}));
     $('clipsList').innerHTML=window.clipforgeSuggestedClips.map((x,i)=>'<div class="clipitem"><b>'+x.name+'</b><div class="score">Skor potensi editorial: '+x.score+'/100</div><div class="muted">'+x.start.toFixed(1)+'s – '+x.end.toFixed(1)+'s</div><div style="margin-top:6px;font-size:12px;color:var(--accent2)">Hook: '+(x.hookText||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div><div class="muted" style="margin-top:5px">'+(x.reasons||[]).join(' • ')+'</div><div style="margin-top:6px;line-height:1.45">'+x.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div><button class="smallbtn" data-clip="'+i+'">Pilih momen</button></div>').join('');
     $('clipsList').querySelectorAll('[data-clip]').forEach(b=>b.onclick=()=>{const x=window.clipforgeSuggestedClips[Number(b.dataset.clip)];$('start').value=x.start.toFixed(1);$('end').value=x.end.toFixed(1);video.currentTime=x.start;$('clipStatus').textContent=x.name+' dipilih dari konteks transkrip. Periksa potongan sebelum ekspor.'});
     $('clipStatus').textContent='Selesai. Kandidat dinilai dari hook pembuka, rasa penasaran, emosi, payoff, kejelasan, dan detail. Skor hanya estimasi editorial, bukan prediksi views.';
@@ -397,39 +397,50 @@ async function runSmartMp4(){
 }
 $('smartMp4').onclick=runSmartMp4;
 
-// One-click workflow: transcribe, rank hooks, select a highlight clip, apply emoji/theme, export MP4.
+// One-click workflow: transcribe, rank and export up to five separate Shorts.
 $('autoCreate').onclick=async()=>{
  const btn=$('autoCreate'),label=$('autoCreateStatus');
  if(!sourceFile||exporting)return;
  btn.disabled=true;
+ const oldSettings={start:$('start').value,end:$('end').value,hook:$('hook').value,ratio:$('ratio').value,resolution:$('resolution').value,quality:$('quality').value,clipLength:$('clipLength').value,theme:$('captionTheme').value};
  const waitFor=(id)=>new Promise((resolve,reject)=>{let n=0;const tick=()=>{if(!$(id).disabled){resolve();return}if(++n>3600){reject(new Error('Proses terlalu lama.'));return}setTimeout(tick,500)};tick()});
  try{
-  label.textContent='1/5 • Membuat subtitle otomatis dengan AI…';
-  $('autoCaption').click();
-  await waitFor('autoCaption');
+  label.textContent='1/5 • Membuat transkrip dan subtitle AI…';
+  $('autoCaption').click();await waitFor('autoCaption');
   if(!subtitleSegments.length)throw new Error('Auto Caption tidak menghasilkan subtitle. Pastikan video memiliki audio yang jelas.');
-  label.textContent='2/5 • Mencari kalimat hook terbaik…';
+  label.textContent='2/5 • Menilai hook dan konteks percakapan…';
   $('findHooks').click();
-  const hookText=$('hookSuggestions').querySelector('[data-hook="0"]')?.closest('.clipitem')?.querySelector('div:last-of-type')?.textContent;
-  if(hookText)$('hook').value=hookText;
-  updateHookMeter();
-  label.textContent='3/5 • Menganalisis visual dan memilih klip terbaik…';
-  $('findClips').click();
-  await waitFor('findClips');
-  const clips=window.clipforgeSuggestedClips||[];
-  if(clips.length){const best=[...clips].sort((a,b)=>b.score-a.score)[0];$('start').value=best.start.toFixed(2);$('end').value=best.end.toFixed(2);video.currentTime=best.start;}
-  else throw new Error('Tidak ada klip yang dapat dipilih.');
-  label.textContent='4/5 • Menambahkan emoji dan menerapkan tema…';
+  label.textContent='3/5 • Memilih lima momen terbaik yang tidak berdekatan…';
+  $('findClips').click();await waitFor('findClips');
+  const clips=[...(window.clipforgeSuggestedClips||[])].sort((a,b)=>b.score-a.score).slice(0,5);
+  if(!clips.length)throw new Error('Tidak ditemukan kandidat klip. Coba video dengan audio yang lebih jelas.');
   subtitleSegments=subtitleSegments.map(seg=>({...seg,text:addEmojiToText(seg.text)}));
-  if($('hook').value.trim())$('hook').value=addEmojiToText($('hook').value);
-  $('captionTheme').value='bold';$('ratio').value='9:16';$('resolution').value='1080';$('quality').value='fast';$('clipLength').value='15';
-  updateOverlay();updateHookMeter();
-  label.textContent='5/5 • Merender highlight '+Math.round(Number($('end').value)-Number($('start').value))+' detik menjadi MP4…';
-  const exported=await runExport('mp4');
-  if(!exported)throw new Error('Ekspor MP4 gagal. Periksa pesan status ekspor sebelum mencoba lagi.');
-  label.textContent='Selesai. Highlight pilihan berhasil diekspor.';
- }catch(err){label.textContent='Auto Creator berhenti: '+err.message;status(err.message)}
- finally{btn.disabled=!sourceFile;}
+  $('ratio').value='9:16';$('resolution').value='720';$('quality').value='fast';$('clipLength').value='15';$('captionTheme').value='bold';
+  updateOverlay();
+  let completed=0;
+  for(let i=0;i<clips.length;i++){
+   const clip=clips[i],clipStart=Math.max(0,Number(clip.start)||0),clipEnd=Math.min(video.duration,Number(clip.end)||video.duration);
+   if(clipEnd<=clipStart)continue;
+   const firstSentence=(clip.text||'').split(/(?<=[.!?])\s+/)[0]||'';
+   $('start').value=clipStart.toFixed(2);$('end').value=clipEnd.toFixed(2);
+   $('hook').value=firstSentence.length>105?firstSentence.slice(0,102)+'…':firstSentence;
+   updateHookMeter();updateOverlay();
+   label.textContent='4/5 • Merender klip '+(i+1)+' dari '+clips.length+' ('+Math.round(clipEnd-clipStart)+' detik)…';
+   window.clipforgeBatchIndex=i+1;
+   const exported=await runExport('mp4');
+   if(!exported)throw new Error('Ekspor klip '+(i+1)+' gagal. Periksa status ekspor; klip sebelumnya sudah diunduh.');
+   completed++;
+   label.textContent='5/5 • '+completed+'/'+clips.length+' klip selesai. Menyiapkan klip berikutnya…';
+  }
+  window.clipforgeBatchIndex=0;
+  if(!completed)throw new Error('Tidak ada klip yang berhasil diekspor.');
+  label.textContent='Selesai! '+completed+' file MP4 vertikal telah dibuat dan diunduh satu per satu.';
+ }catch(err){window.clipforgeBatchIndex=0;label.textContent='Auto Creator berhenti: '+err.message;status(err.message)}
+ finally{
+  $('start').value=oldSettings.start;$('end').value=oldSettings.end;$('hook').value=oldSettings.hook;
+  $('ratio').value=oldSettings.ratio;$('resolution').value=oldSettings.resolution;$('quality').value=oldSettings.quality;$('clipLength').value=oldSettings.clipLength;$('captionTheme').value=oldSettings.theme;
+  updateOverlay();updateHookMeter();btn.disabled=!sourceFile;
+ }
 };
 
 let exportAudioContext=null, exportAudioSource=null;
@@ -501,7 +512,7 @@ async function runExport(format){
   await finished;
   const blob=new Blob(chunks,{type:mime});
   if(!blob.size)throw new Error('File hasil ekspor kosong. Coba ulangi dengan klip lebih pendek.');
-  const filename=window.clipforgePartIndex?('clipforge-bagian-'+String(window.clipforgePartIndex).padStart(2,'0')+(mime.startsWith('video/mp4')?'.mp4':'.webm')):(mime.startsWith('video/mp4')?'clipforge-export.mp4':'clipforge-export.webm');
+  const filename=window.clipforgePartIndex?('clipforge-bagian-'+String(window.clipforgePartIndex).padStart(2,'0')+(mime.startsWith('video/mp4')?'.mp4':'.webm')):window.clipforgeBatchIndex?('clipforge-short-'+String(window.clipforgeBatchIndex).padStart(2,'0')+(mime.startsWith('video/mp4')?'.mp4':'.webm')):(mime.startsWith('video/mp4')?'clipforge-export.mp4':'clipforge-export.webm');
   const url=URL.createObjectURL(blob),a=document.createElement('a');
   a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),120000);
