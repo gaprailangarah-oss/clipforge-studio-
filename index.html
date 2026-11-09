@@ -193,16 +193,32 @@ async function loadYouTubeVideo(raw){
  try{
   status('Menghubungkan ke server gratis… server mungkin perlu bangun sekitar 30–60 detik.');
   $('captionStatus').textContent='Menyiapkan video YouTube…';
-  const response=await fetch(getApiBase()+'/api/youtube/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:raw})});
+  const base=getApiBase();
+  const response=await fetch(base+'/api/youtube/jobs',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:raw})});
   if(!response.ok){
-   let message='Server gagal mengambil video.';
+   let message='Server gagal memulai analisis.';
    try{const data=await response.json();message=data.detail||message}catch{}
    throw new Error(message)
   }
-  status('Mengunduh video ke komputer…');
-  const blob=await response.blob();
+  const created=await response.json(),jobId=created.job_id;
+  if(!jobId)throw new Error('Server tidak memberikan ID tugas.');
+  let job=null;
+  for(let attempt=0;attempt<600;attempt++){
+   await new Promise(resolve=>setTimeout(resolve,1800));
+   const check=await fetch(base+'/api/youtube/jobs/'+encodeURIComponent(jobId));
+   if(!check.ok)throw new Error('Status proses tidak dapat dibaca. Coba ulangi link.');
+   job=await check.json();
+   status((job.message||'Memproses video…')+' '+(job.progress||0)+'%');
+   if(job.status==='complete')break;
+   if(job.status==='error')throw new Error(job.message||'YouTube gagal diproses.');
+  }
+  if(!job||job.status!=='complete')throw new Error('Proses melewati batas waktu. Coba video yang lebih pendek.');
+  status('Mengunduh hasil video ke komputer…');
+  const fileResponse=await fetch(base+'/api/youtube/jobs/'+encodeURIComponent(jobId)+'/file');
+  if(!fileResponse.ok)throw new Error('Video siap, tetapi gagal dikirim ke browser.');
+  const blob=await fileResponse.blob();
   if(!blob.size)throw new Error('Server mengembalikan file kosong.');
-  const file=new File([blob],'youtube-'+id+'.mp4',{type:blob.type||'video/mp4'});
+  const file=new File([blob],job.filename||('youtube-'+id+'.mp4'),{type:blob.type||'video/mp4'});
   setVideo(URL.createObjectURL(file),file);
   $('captionStatus').textContent='Video siap. Klik “Auto Edit Preview” untuk membuat caption verbatim, emoji, dan memilih klip otomatis.';
   $('autoEditPreview').scrollIntoView({behavior:'smooth',block:'center'});
