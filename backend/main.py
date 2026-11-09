@@ -83,9 +83,8 @@ def run_download(job_id: str, video_id: str, temp_dir: str):
             job["message"] = "Menyiapkan file video…"
 
     options = {
-        "format": "best[ext=mp4][height<=1080]/best[height<=1080]/best",
+        "format": "best[ext=mp4][height<=720][protocol^=https]/best[ext=mp4][protocol^=https]/best[protocol^=https]",
         "outtmpl": output_template,
-        "merge_output_format": "mp4",
         "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
