@@ -28,21 +28,24 @@ label{display:block;color:#b8c3d4;font-size:12px;margin:10px 0 6px}.field{min-wi
 #hookMeterBar{height:100%;width:0;background:linear-gradient(90deg,#ff7185,#ffc857,#40d9c2);transition:width .25s}
 .meterhead{display:flex;justify-content:space-between;align-items:center;font-size:12px}
 #hookFeedback{font-size:11px;color:var(--muted);line-height:1.5}
+.quickbar{display:flex;gap:8px;padding:10px 22px;max-width:1440px;margin:auto;overflow-x:auto;scrollbar-width:none}.quickbar button{white-space:nowrap;background:#171e2a;border-color:#35425a}.quickbar button:active{background:#302b56}.clipitem .score{font-weight:800;color:#8ee9d8}.ai-note{margin-top:8px;padding:10px;border:1px solid #35425a;background:#111a24;border-radius:10px;font-size:11px;color:#c5d0df;line-height:1.5}
+@media(max-width:620px){.quickbar{position:sticky;top:66px;z-index:3;padding:8px 12px;background:#0b0d12ed;backdrop-filter:blur(12px)}.quickbar button{font-size:11px;padding:9px 10px}#exportTool{align-items:flex-start;flex-direction:column}#exportTool>.row{width:100%}#exportTool button{flex:1}}
 @media(max-width:950px){main{grid-template-columns:1fr}.right{display:grid;grid-template-columns:1fr 1fr}}@media(max-width:620px){header{padding:0 14px}main{padding:12px}.right{display:flex}.controls{grid-template-columns:1fr 1fr}.stage{min-height:260px}}
 </style></head>
 <body>
 <header><div class="logo">CLIP<span>FORGE</span> <span style="color:#e9ecf5">STUDIO</span></div><div class="row"><span class="tag">BROWSER VIDEO EDITOR</span><span class="pill">BETA</span></div></header>
+<nav class="quickbar" aria-label="Alat utama"><button data-jump="captionTool">🎙️ Auto Caption</button><button data-jump="clipsTool">✂️ Cari klip AI</button><button data-jump="autoCreatorTool">✨ Auto Creator</button><button data-jump="exportTool">📱 Ekspor iPhone</button></nav>
 <main>
 <section class="panel">
  <div class="row between"><h2>Preview & Timeline</h2><div class="row"><label class="filebtn" style="margin:0">Pilih video<input id="file" type="file" accept="video/*" hidden></label><button id="loadUrl" class="smallbtn">Muat URL</button></div></div>
- <div class="stage" id="stage"><div id="empty">🎬<br><b>Mulai edit videomu</b><br>Upload file atau tempel direct link MP4/WebM<br><span class="muted">Link halaman YouTube/TikTok/Instagram tidak didukung langsung.</span></div><video id="video" controls playsinline style="display:none"></video><div id="overlayPreview"></div></div>
+ <div class="stage" id="stage"><div id="empty">🎬<br><b>Mulai edit videomu</b><br>Upload file atau tempel direct link MP4/WebM<br><span class="muted">Link halaman YouTube/TikTok/Instagram tidak didukung langsung.</span></div><video id="video" controls playsinline preload="metadata" webkit-playsinline style="display:none"></video><div id="overlayPreview"></div></div>
  <div class="timeline">
   <div class="row between"><span class="muted">Potong klip</span><span class="muted" id="durationLabel">Durasi: —</span></div>
   <div class="timeinputs"><div><label>Mulai (detik)</label><input id="start" type="number" min="0" step=".1" value="0"></div><div><label>Akhir (detik)</label><input id="end" type="number" min="0" step=".1" value="0"></div></div>
   <div class="row" style="margin-top:10px"><button id="setIn" class="smallbtn">Set mulai dari posisi</button><button id="setOut" class="smallbtn">Set akhir dari posisi</button><button id="playClip" class="smallbtn">Putar bagian</button></div>
  </div>
 
- <section class="panel clipfinder">
+ <section class="panel clipfinder" id="clipsTool">
   <div class="row between"><div><h2 style="margin:0">🔎 Cari 5 klip otomatis</h2><div class="muted">Menganalisis perubahan visual untuk menemukan bagian yang paling aktif.</div></div><button id="findClips" class="primary">Cari 5 klip</button></div>
   <div class="row" style="margin-top:10px"><div class="field"><label>Durasi setiap klip</label><select id="clipLength"><option value="10">10 detik</option><option value="15" selected>15 detik</option><option value="20">20 detik</option><option value="30">30 detik</option></select></div></div>
   <div id="clipStatus" class="muted" style="margin-top:8px">Pilih video, lalu tekan Cari 5 klip. Hasilnya berupa rekomendasi berdasarkan aktivitas visual, bukan pemahaman isi atau dialog.</div>
@@ -54,17 +57,17 @@ label{display:block;color:#b8c3d4;font-size:12px;margin:10px 0 6px}.field{min-wi
   <div><label>Mode export</label><select id="quality"><option value="fast">Cepat • beban encoding rendah</option><option value="standard" selected>Seimbang</option><option value="high">Kualitas tinggi</option></select></div>
   <div><label>Kecepatan</label><select id="speed"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1× normal</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></div>
  </div>
- <div class="panel" style="margin-top:18px;background:linear-gradient(120deg,#27204c,#142b36);border-color:#6555b8">
+ <div class="panel" id="autoCreatorTool" style="margin-top:18px;background:linear-gradient(120deg,#27204c,#142b36);border-color:#6555b8">
   <h2 style="margin:0 0 7px">✨ Auto Creator — Satu Klik</h2>
   <div class="muted" style="margin-bottom:12px">Otomatis buat caption, cari hook, pilih klip terbaik, tambahkan emoji dan tema, lalu ekspor MP4 final.</div>
   <button id="autoCreate" class="primary" style="width:100%;padding:14px;font-size:14px" disabled>🚀 BUAT VIDEO MP4 OTOMATIS</button>
   <div class="muted" id="autoCreateStatus" style="margin-top:9px">Pilih video untuk mengaktifkan Auto Creator.</div>
  </div>
- <div class="row between" style="margin-top:18px"><div><h2 style="margin:0">Ekspor video</h2><div class="muted">MP4 (H.264) • diproses di browser</div></div><div class="row"><button id="exportFast" disabled>Ekspor cepat WebM</button><button id="smartMp4" disabled>MP4 Cepat + Semua Fitur</button><button id="export" class="primary" disabled>Ekspor MP4</button></div><div class="row" style="margin-top:10px"><button id="iphonePart" disabled>📱 Ekspor bagian iPhone (2 menit)</button><span class="muted">Untuk video panjang: unduh per bagian agar RAM iPhone tidak menumpuk.</span></div></div>
+ <div class="row between" id="exportTool" style="margin-top:18px"><div><h2 style="margin:0">Ekspor video</h2><div class="muted">MP4 (H.264) • diproses di browser</div></div><div class="row"><button id="exportFast" disabled>Ekspor cepat WebM</button><button id="smartMp4" disabled>MP4 Cepat + Semua Fitur</button><button id="export" class="primary" disabled>Ekspor MP4</button></div><div class="row" style="margin-top:10px"><button id="iphonePart" disabled>📱 Ekspor bagian iPhone (2 menit)</button><span class="muted">Untuk video panjang: unduh per bagian agar RAM iPhone tidak menumpuk.</span></div></div>
  <div class="progress"><div id="bar"></div></div><div id="status">Pilih video untuk mulai.</div>
 </section>
 <aside class="right">
- <section class="panel"><h2>✍️ Teks & Branding</h2>
+ <section class="panel" id="captionTool"><h2>✍️ Teks & Branding</h2>
   <label>Judul / hook</label><input id="hook" type="text" placeholder="Tulis hook yang menarik...">
   <label>Subtitle / caption</label><textarea id="caption" rows="3" placeholder="Tulis subtitle atau kalimat pendukung..."></textarea>
   <div class="row" style="margin-top:9px"><button id="autoCaption" class="primary smallbtn">🎙️ Buat Auto Caption</button><button id="findHooks" class="smallbtn">🎯 Cari Hook Terbaik</button></div>
@@ -81,7 +84,7 @@ label{display:block;color:#b8c3d4;font-size:12px;margin:10px 0 6px}.field{min-wi
   <div class="row"><div class="field"><label>Ukuran teks</label><select id="textSize"><option value="24">Kecil</option><option value="36" selected>Sedang</option><option value="52">Besar</option><option value="68">Ekstra besar</option></select></div><div class="field"><label>Posisi teks</label><select id="textPos"><option value="top">Atas</option><option value="center" selected>Tengah</option><option value="bottom">Bawah</option></select></div></div>
   <label>Warna teks</label><select id="textColor"><option value="#ffffff">Putih</option><option value="#ffe45c">Kuning</option><option value="#65e6d2">Mint</option><option value="#ff8eaa">Pink</option></select>
  </section>
- <section class="panel"><h2>🔊 Audio & Tampilan</h2>
+ <section class="panel" id="visualTool"><h2>🔊 Audio & Tampilan</h2>
   <label>Volume audio <span id="volLabel">100%</span></label><input id="volume" type="range" min="0" max="150" value="100">
   <label>Zoom / crop</label><input id="zoom" type="range" min="100" max="150" value="100"><div class="row between muted"><span>Fit</span><span>Zoom 150%</span></div>
   <label>Tema caption & emoji</label><select id="captionTheme"><option value="bold">Bold Viral — putih tebal + highlight kuning</option><option value="clean">Clean Minimal — putih sederhana</option><option value="neon">Neon — cyan bercahaya</option><option value="creator">Creator — putih dengan panel gelap</option><option value="pink">Pop Pink — pink cerah</option></select>
@@ -93,6 +96,7 @@ label{display:block;color:#b8c3d4;font-size:12px;margin:10px 0 6px}.field{min-wi
 </main>
 <script type="module">
 const $=id=>document.getElementById(id);
+document.querySelectorAll('[data-jump]').forEach(b=>b.addEventListener('click',()=>$(b.dataset.jump)?.scrollIntoView({behavior:'smooth',block:'start'})));
 const video=$('video'), fileInput=$('file'); let sourceFile=null, sourceUrl=null, ffmpeg=null, ffmpegReady=false, exporting=false;
 function status(s){$('status').textContent=s}
 function setVideo(src,file=null){$('smartMp4').disabled=!file;$('autoCreate').disabled=!file;subtitleSegments=[];$('hookSuggestions').innerHTML='';$('captionStatus').textContent='Pilih video, lalu buat Auto Caption.';if(sourceUrl)URL.revokeObjectURL(sourceUrl);sourceFile=file;sourceUrl=src;video.src=src;video.style.display='block';$('empty').style.display='none';$('export').disabled=false;$('exportFast').disabled=false;$('downloadSource').disabled=!file;video.onloadedmetadata=()=>{$('start').value=0;$('end').value=video.duration.toFixed(1);$('durationLabel').textContent='Durasi: '+video.duration.toFixed(1)+' detik';status('Video siap diedit.');updateOverlay()};video.onerror=()=>status('Video gagal dimuat. Periksa URL atau dukungan CORS.')}
@@ -171,6 +175,42 @@ $('findClips').onclick=async()=>{
  const samples=[], step=duration>=1500?8:duration>=600?4:Math.max(1,Math.min(2,duration/90));
  try{
   video.pause();
+  // Transcript-first clip selection: prefer complete thoughts and score each candidate on six editorial signals.
+  if(subtitleSegments.length>=2){
+   const candidates=[];
+   for(let i=0;i<subtitleSegments.length;i++){
+    let group=[],start=subtitleSegments[i].start,end=start,text='';
+    for(let j=i;j<subtitleSegments.length;j++){
+     const seg=subtitleSegments[j];
+     if(j>i&&seg.start-start>38)break;
+     group.push(seg);end=seg.end;text=group.map(x=>x.text).join(' ').trim();
+     const span=end-start;
+     if(span>=12&&span<=35){
+      const q=text.toLowerCase();let hook=0,emotion=0,payoff=0,share=0,clarity=0,conversation=0;
+      if(/\\?|kenapa|mengapa|bagaimana|ternyata|rahasia|bayangkan|what if|why|how/i.test(q))hook=1;
+      if(/takut|sedih|marah|senang|menangis|bahaya|mengejutkan|luar biasa|gagal|berhasil|love|hate|shock/i.test(q))emotion=1;
+      if(/akhirnya|hasilnya|ternyata|karena itu|jadi|kesimpulannya|berhasil|terbukti|payoff/i.test(q))payoff=1;
+      if(/kamu|teman|orang|semua|setiap|pernah|harus|jangan|tips|cara|fakta/i.test(q))share=1;
+      if(text.split(/\\s+/).length>=8&&text.split(/\\s+/).length<=65)clarity=1;
+      if(/setuju|menurutmu|bagaimana menurut|pernahkah|apa pendapat|komentar|pilih/i.test(q))conversation=1;
+      const score=Math.round((hook*24+emotion*20+payoff*18+share*14+clarity*12+conversation*12));
+      candidates.push({start,end,text,score,parts:group.length});
+      break;
+     }
+     if(span>35)break;
+    }
+   }
+   candidates.sort((a,b)=>b.score-a.score);
+   const picked=[];
+   for(const item of candidates){if(picked.every(x=>Math.abs(x.start-item.start)>Math.max(18,wanted*.9))){picked.push(item);if(picked.length===5)break}}
+   if(picked.length){
+    window.clipforgeSuggestedClips=picked.map((x,i)=>({name:'Momen '+(i+1),start:x.start,end:x.end,score:x.score,text:x.text}));
+    $('clipsList').innerHTML=window.clipforgeSuggestedClips.map((x,i)=>'<div class="clipitem"><b>'+x.name+'</b><div class="score">Skor editorial: '+x.score+'/100</div><div class="muted">'+x.start.toFixed(1)+'s – '+x.end.toFixed(1)+'s</div><div style="margin-top:6px;line-height:1.45">'+x.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div><button class="smallbtn" data-clip="'+i+'">Pilih momen</button></div>').join('');
+    $('clipsList').querySelectorAll('[data-clip]').forEach(b=>b.onclick=()=>{const x=window.clipforgeSuggestedClips[Number(b.dataset.clip)];$('start').value=x.start.toFixed(1);$('end').value=x.end.toFixed(1);video.currentTime=x.start;$('clipStatus').textContent=x.name+' dipilih berdasarkan transkrip. Periksa konteks sebelum ekspor.'});
+    $('clipStatus').textContent='Analisis transkrip selesai. Kandidat dipilih dari kalimat bertiming dan dinilai dengan 6 sinyal editorial. Skor adalah heuristik, bukan prediksi viral.';
+    return;
+   }
+  }
   for(let t=0;t<duration;t+=step){
    video.currentTime=Math.min(t,Math.max(0,duration-.05));
    await new Promise((resolve,reject)=>{const done=()=>{video.removeEventListener('seeked',done);resolve()};video.addEventListener('seeked',done,{once:true});setTimeout(()=>{video.removeEventListener('seeked',done);resolve()},500)});
@@ -296,8 +336,9 @@ $('autoCreate').onclick=async()=>{
   $('captionTheme').value='bold';$('ratio').value='9:16';$('resolution').value='1080';$('quality').value='fast';$('clipLength').value='15';
   updateOverlay();updateHookMeter();
   label.textContent='5/5 • Merender highlight '+Math.round(Number($('end').value)-Number($('start').value))+' detik menjadi MP4…';
-  await runExport('mp4');
-  label.textContent='Selesai. Highlight pilihan sudah diproses. Pastikan status menunjukkan MP4 berhasil dibuat.';
+  const exported=await runExport('mp4');
+  if(!exported)throw new Error('Ekspor MP4 gagal. Periksa pesan status ekspor sebelum mencoba lagi.');
+  label.textContent='Selesai. Highlight pilihan berhasil diekspor.';
  }catch(err){label.textContent='Auto Creator berhenti: '+err.message;status(err.message)}
  finally{btn.disabled=!sourceFile;}
 };
@@ -376,9 +417,11 @@ async function runExport(format){
   setTimeout(()=>URL.revokeObjectURL(url),120000);
   $('bar').style.width='100%';
   status('Selesai! '+filename+' berhasil dibuat. Ukuran: '+(blob.size/1024/1024).toFixed(1)+' MB.');
+  return true;
  }catch(err){
   console.error(err);
   status('Ekspor gagal: '+(err&&err.message?err.message:String(err)));
+  return false;
  }finally{
   if(stopAt)video.removeEventListener('timeupdate',stopAt);
   if(recorder&&recorder.state!=='inactive'){try{recorder.stop()}catch(e){}}
@@ -404,15 +447,16 @@ $('iphonePart').onclick=async()=>{
  if(iphoneNextStart===null){iphoneNextStart=fullStart;iphonePartNumber=0;}
  if(iphoneNextStart>=fullEnd){iphoneNextStart=fullStart;iphonePartNumber=0;}
  const partStart=iphoneNextStart,partEnd=Math.min(partStart+120,fullEnd);
- iphonePartNumber++;
- iphoneNextStart=partEnd;
+ const nextPartNumber=iphonePartNumber+1;
  iphoneExportBusy=true;
  $('start').value=partStart.toFixed(2);$('end').value=partEnd.toFixed(2);
- window.clipforgePartIndex=iphonePartNumber;
+ window.clipforgePartIndex=nextPartNumber;
  $('iphonePart').disabled=true;
  $('iphonePart').textContent='Mengekspor bagian '+iphonePartNumber+'…';
  try{
-  await runExport('mp4');
+  const exported=await runExport('mp4');
+  if(!exported){status('Ekspor bagian gagal. Coba lagi; posisi bagian tidak akan dilompati.');return;}
+  iphonePartNumber=nextPartNumber;iphoneNextStart=partEnd;
   if(iphoneNextStart>=fullEnd){
    $('iphonePart').textContent='Selesai — tekan untuk mulai ulang';
    status('Bagian terakhir selesai. File MP4 telah diunduh satu per satu.');
