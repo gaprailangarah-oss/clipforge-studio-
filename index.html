@@ -335,7 +335,7 @@ $('autoCaption').onclick=async()=>{
   // Resample one inference window at a time to avoid a second full-length audio array.
   const rate=decoded.sampleRate,ratio=rate/16000,duration=decoded.duration;
   const channels=Array.from({length:decoded.numberOfChannels},(_,i)=>decoded.getChannelData(i));
-  await ac.close();ac=null;
+  if(ac){await ac.close();ac=null}
   const transcriber=await getWhisper();
   const windowSeconds=180,overlapSeconds=3,total=Math.ceil(duration/windowSeconds),all=[];
   let lastAcceptedEnd=0;
