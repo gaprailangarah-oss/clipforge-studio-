@@ -402,12 +402,7 @@ $('iphonePart').onclick=async()=>{
  const fullEnd=Math.min(video.duration,Number(originalEnd)||video.duration);
  if(!Number.isFinite(fullEnd)||fullEnd<=fullStart){status('Rentang video tidak valid.');return;}
  if(iphoneNextStart===null){iphoneNextStart=fullStart;iphonePartNumber=0;}
- if(iphoneNextStart>=fullEnd){
-  iphoneNextStart=null;iphonePartNumber=0;
-  $('iphonePart').textContent='📱 Ekspor bagian iPhone (2 menit)';
-  status('Semua bagian selesai. Tekan lagi untuk memulai ekspor dari awal.');
-  return;
- }
+ if(iphoneNextStart>=fullEnd){iphoneNextStart=fullStart;iphonePartNumber=0;}
  const partStart=iphoneNextStart,partEnd=Math.min(partStart+120,fullEnd);
  iphonePartNumber++;
  iphoneNextStart=partEnd;
@@ -419,7 +414,7 @@ $('iphonePart').onclick=async()=>{
  try{
   await runExport('mp4');
   if(iphoneNextStart>=fullEnd){
-   $('iphonePart').textContent='Selesai — mulai ulang';
+   $('iphonePart').textContent='Selesai — tekan untuk mulai ulang';
    status('Bagian terakhir selesai. File MP4 telah diunduh satu per satu.');
   }else{
    $('iphonePart').textContent='📱 Ekspor bagian berikutnya ('+Math.ceil((fullEnd-iphoneNextStart)/120)+' tersisa)';
@@ -432,5 +427,5 @@ $('iphonePart').onclick=async()=>{
  }
 };
 
-video.addEventListener('loadedmetadata',()=>{video.volume=1;updateOverlay();$('iphonePart').disabled=false;});
+video.addEventListener('loadedmetadata',()=>{video.volume=1;updateOverlay();iphoneNextStart=null;iphonePartNumber=0;$('iphonePart').disabled=false;});
 </script></body></html>
