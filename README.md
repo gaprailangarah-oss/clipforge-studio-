@@ -1,6 +1,6 @@
 # ClipForge Studio
 
-Browser-based video editor with local Whisper transcription, contextual emoji captions, automatic highlight selection, and MP4 export.
+Browser-based video editor with local Whisper transcription, optional cloud voice isolation + Scribe v2 captions, automatic highlight selection, and MP4 export.
 
 ## YouTube link processing (free, limited)
 
@@ -23,7 +23,27 @@ The static GitHub Pages app needs a small API service to retrieve a video file f
 - After the video is downloaded into the browser, Whisper, caption timing, emoji decoration, clip selection, and export run on the user's computer. WebGPU is used when supported.
 - No automatic publishing to YouTube and no watermark.
 
-### Responsible use
+### Cloud captions: voice isolation + Scribe v2
+
+The editor includes an optional **AI Bersihkan Suara + Caption** button. It sends a mono 16 kHz WAV extracted in the browser to the backend, then:
+1. Calls ElevenLabs Audio Isolation to reduce background noise and isolate speech.
+2. Sends the isolated audio to ElevenLabs Scribe v2 for Indonesian/English transcription, word-level timestamps, and speaker labels.
+3. Converts word timings into short subtitle phrases for the Shorts-style renderer.
+
+### Enable the paid cloud feature
+
+1. Create an ElevenLabs account and generate an API key from its developer dashboard.
+2. Deploy the latest repository changes to Render (the Blueprint adds ELEVENLABS_API_KEY as a secret environment variable).
+3. In Render → your clipforge-studio-api service → Environment, add ELEVENLABS_API_KEY with your key as its value, then save/redeploy.
+4. Open the GitHub Pages editor, reload, choose a video, and click **AI Bersihkan Suara + Caption**.
+
+**Important:** Never put the API key in index.html, GitHub, or this chat. Keep it only in Render Environment. ElevenLabs charges for API usage according to the account's plan and usage; check its current pricing before processing long videos. Audio is sent to ElevenLabs for processing. Very noisy audio, overlapping voices, music mixed over speech, and distant microphones can still cause errors; voice isolation improves the odds but cannot guarantee perfect recovery. The existing local Whisper button remains available as a fallback.
+
+Official API references:
+- [ElevenLabs Audio Isolation](https://elevenlabs.io/docs/api-reference/audio-isolation/convert)
+- [ElevenLabs Speech to Text / Scribe v2](https://elevenlabs.io/docs/api-reference/speech-to-text/convert)
+
+## Responsible use
 
 Only process videos you own or have permission to download and edit. Respect copyright, privacy, and YouTube's Terms of Service. The service does not bypass sign-in, age restrictions, DRM, or other access controls. Do not submit private or restricted videos.
 
