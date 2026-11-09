@@ -387,11 +387,20 @@ $('findClips').onclick=async()=>{
    }
    candidates.sort((a,b)=>b.score-a.score||(b.end-b.start)-(a.end-a.start));
    const picked=[];
+   // Pass 1: prefer clearly separated moments with a 2-second breathing gap.
    for(const item of candidates){
-    const middle=(item.start+item.end)/2;
-    // Enforce non-overlapping clips with a short breathing gap, not merely distant midpoints.
     if(picked.every(x=>item.start>=x.end+2||item.end<=x.start-2)){
      picked.push(item);if(picked.length===5)break;
+    }
+   }
+   // Pass 2: if fewer than five strong candidates fit, fill remaining slots with
+   // additional non-overlapping moments rather than returning an unnecessarily short list.
+   if(picked.length<5){
+    for(const item of candidates){
+     if(picked.includes(item))continue;
+     if(picked.every(x=>item.start>=x.end||item.end<=x.start)){
+      picked.push(item);if(picked.length===5)break;
+     }
     }
    }
    if(picked.length){
