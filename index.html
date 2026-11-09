@@ -103,8 +103,8 @@ details.advanced .controls{margin:0 0 12px}
 
 <main>
 <section class="panel">
- <div class="row between"><h2>Editor video</h2><div class="row"><label class="filebtn" style="margin:0">Pilih video<input id="file" type="file" accept="video/*" hidden></label><button id="loadUrl" class="smallbtn">Muat URL</button></div></div>
- <div class="stage" id="stage"><div id="empty">🎬<br><b>Mulai edit videomu</b><br>Upload file atau tempel direct link MP4/WebM<br><span class="muted">Link halaman YouTube/TikTok/Instagram tidak didukung langsung.</span></div><video id="video" controls playsinline preload="metadata" webkit-playsinline style="display:none"></video><div id="overlayPreview"></div></div>
+ <div class="row between"><h2>Editor video</h2><div class="row"><label class="filebtn" style="margin:0">Pilih video<input id="file" type="file" accept="video/*" hidden></label><button id="loadUrl" class="primary">YouTube AI</button></div></div>
+ <div class="stage" id="stage"><div id="empty">🎬<br><b>Mulai edit videomu</b><br>Upload video atau tempel link YouTube untuk Auto Caption, emoji, dan Auto Edit.<br><span class="muted">Video YouTube publik diproses lewat backend gratis terbatas; file lokal tetap tersedia sebagai alternatif.</span></div><video id="video" controls playsinline preload="metadata" webkit-playsinline style="display:none"></video><div id="overlayPreview"></div></div>
  <div class="timeline">
   <div class="row between"><span class="muted">Potong klip</span><span class="muted" id="durationLabel">Durasi: —</span></div>
   <div class="timeinputs"><div><label>Mulai (detik)</label><input id="start" type="number" min="0" step=".1" value="0"></div><div><label>Akhir (detik)</label><input id="end" type="number" min="0" step=".1" value="0"></div></div>
@@ -175,10 +175,57 @@ const $=id=>document.getElementById(id);
 document.querySelectorAll('#projectTool>h2,#visualTool>h2').forEach(h=>h.addEventListener('click',()=>h.parentElement.classList.toggle('expanded')));
 document.querySelectorAll('[data-jump]').forEach(b=>b.addEventListener('click',()=>$(b.dataset.jump)?.scrollIntoView({behavior:'smooth',block:'start'})));
 const video=$('video'), fileInput=$('file'); let sourceFile=null, sourceUrl=null, ffmpeg=null, ffmpegReady=false, exporting=false;
+const API_BASE_DEFAULT='https://clipforge-studio-api.onrender.com';
+const getApiBase=()=>((localStorage.getItem('clipforgeApiBase')||API_BASE_DEFAULT).trim().replace(/\\/+$/,''));
+function youtubeVideoId(raw){
+ try{
+  const u=new URL(raw);
+  if(!['youtube.com','www.youtube.com','m.youtube.com','youtu.be','www.youtu.be'].includes(u.hostname.toLowerCase()))return null;
+  let id=u.hostname.toLowerCase().includes('youtu.be')?u.pathname.split('/').filter(Boolean)[0]:u.searchParams.get('v');
+  if(!id){const parts=u.pathname.split('/').filter(Boolean);if(['shorts','live','embed'].includes(parts[0]))id=parts[1]}
+  return /^[A-Za-z0-9_-]{11}$/.test(id||'')?id:null;
+ }catch{return null}
+}
+async function loadYouTubeVideo(raw){
+ const id=youtubeVideoId(raw);
+ if(!id)throw new Error('Link tidak valid. Gunakan link video YouTube biasa, Shorts, atau youtu.be.');
+ $('loadUrl').disabled=true;
+ try{
+  status('Menghubungkan ke server gratis… server mungkin perlu bangun sekitar 30–60 detik.');
+  $('captionStatus').textContent='Menyiapkan video YouTube…';
+  const response=await fetch(getApiBase()+'/api/youtube/download',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({url:raw})});
+  if(!response.ok){
+   let message='Server gagal mengambil video.';
+   try{const data=await response.json();message=data.detail||message}catch{}
+   throw new Error(message)
+  }
+  status('Mengunduh video ke komputer…');
+  const blob=await response.blob();
+  if(!blob.size)throw new Error('Server mengembalikan file kosong.');
+  const file=new File([blob],'youtube-'+id+'.mp4',{type:blob.type||'video/mp4'});
+  setVideo(URL.createObjectURL(file),file);
+  $('captionStatus').textContent='Video siap. Klik “Auto Edit Preview” untuk membuat caption verbatim, emoji, dan memilih klip otomatis.';
+  $('autoEditPreview').scrollIntoView({behavior:'smooth',block:'center'});
+  status('Video YouTube siap dianalisis di komputer.');
+ }finally{$('loadUrl').disabled=false}
+}
+
 function status(s){$('status').textContent=s}
 function setVideo(src,file=null){$('smartMp4').disabled=!file;$('autoCreate').disabled=!file;$('autoEditPreview').disabled=!file;subtitleSegments=[];$('hookSuggestions').innerHTML='';$('captionStatus').textContent='Pilih video untuk membuat transkrip otomatis.';if(sourceUrl)URL.revokeObjectURL(sourceUrl);sourceFile=file;sourceUrl=src;video.src=src;video.style.display='block';$('empty').style.display='none';$('export').disabled=false;$('exportFast').disabled=false;$('downloadSource').disabled=!file;video.onloadedmetadata=()=>{$('start').value=0;$('end').value=video.duration.toFixed(1);$('durationLabel').textContent='Durasi: '+video.duration.toFixed(1)+' detik';status('Video siap diedit.');updateOverlay()};video.onerror=()=>status('Video gagal dimuat. Periksa URL atau dukungan CORS.')}
 fileInput.addEventListener('change',e=>{const f=e.target.files[0];if(f)setVideo(URL.createObjectURL(f),f)});
-$('loadUrl').onclick=()=>{const u=prompt('Tempel direct URL file video MP4/WebM:');if(u)setVideo(u)};
+$('loadUrl').onclick=async()=>{
+ const u=prompt('Tempel link video YouTube publik (youtube.com atau youtu.be):');
+ if(!u)return;
+ try{await loadYouTubeVideo(u.trim())}
+ catch(err){
+  status('Gagal memuat YouTube: '+err.message);
+  $('captionStatus').textContent=err.message;
+  if(err instanceof TypeError){
+   const custom=prompt('Backend belum terhubung. Masukkan URL backend Render jika sudah kamu deploy:',getApiBase());
+   if(custom){localStorage.setItem('clipforgeApiBase',custom.trim().replace(/\\/+$/,''));status('Alamat backend disimpan. Tekan YouTube AI untuk mencoba lagi.')}
+  }
+ }
+};
 $('downloadSource').onclick=()=>{if(!sourceFile)return;const a=document.createElement('a');a.href=sourceUrl;a.download=sourceFile.name;a.click()};
 $('setIn').onclick=()=>{$('start').value=video.currentTime.toFixed(1)};
 $('setOut').onclick=()=>{$('end').value=video.currentTime.toFixed(1)};
