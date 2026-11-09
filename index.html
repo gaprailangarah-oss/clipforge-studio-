@@ -244,37 +244,51 @@ $('findClips').onclick=async()=>{
   video.pause();
   // Transcript-first clip selection: prefer complete thoughts and score each candidate on six editorial signals.
   if(subtitleSegments.length>=2){
+   // Group timed transcript into complete thoughts before scoring, rather than cutting arbitrary word chunks.
+   const ordered=[...subtitleSegments].filter(x=>Number.isFinite(x.start)&&Number.isFinite(x.end)&&x.end>x.start&&x.text).sort((a,b)=>a.start-b.start);
+   const sentences=[];let current=null;
+   for(const seg of ordered){
+    if(!current)current={start:seg.start,end:seg.end,text:seg.text.trim()};
+    else if(seg.start-current.end>1.35||/[.!?…]["')\]]?$/.test(current.text)){
+     sentences.push(current);current={start:seg.start,end:seg.end,text:seg.text.trim()};
+    }else{current.end=Math.max(current.end,seg.end);current.text+=' '+seg.text.trim();}
+   }
+   if(current)sentences.push(current);
    const candidates=[];
-   for(let i=0;i<subtitleSegments.length;i++){
-    let group=[],start=subtitleSegments[i].start,end=start,text='';
-    for(let j=i;j<subtitleSegments.length;j++){
-     const seg=subtitleSegments[j];
-     if(j>i&&seg.start-start>38)break;
-     group.push(seg);end=seg.end;text=group.map(x=>x.text).join(' ').trim();
-     const span=end-start;
-     if(span>=12&&span<=35){
-      const q=text.toLowerCase();let hook=0,emotion=0,payoff=0,share=0,clarity=0,conversation=0;
-      if(/\?|kenapa|mengapa|bagaimana|ternyata|rahasia|bayangkan|what if|why|how/i.test(q))hook=1;
-      if(/takut|sedih|marah|senang|menangis|bahaya|mengejutkan|luar biasa|gagal|berhasil|love|hate|shock/i.test(q))emotion=1;
-      if(/akhirnya|hasilnya|ternyata|karena itu|jadi|kesimpulannya|berhasil|terbukti|payoff/i.test(q))payoff=1;
-      if(/kamu|teman|orang|semua|setiap|pernah|harus|jangan|tips|cara|fakta/i.test(q))share=1;
-      if(text.split(/\\s+/).length>=8&&text.split(/\\s+/).length<=65)clarity=1;
-      if(/setuju|menurutmu|bagaimana menurut|pernahkah|apa pendapat|komentar|pilih/i.test(q))conversation=1;
-      const score=Math.round((hook*24+emotion*20+payoff*18+share*14+clarity*12+conversation*12));
-      candidates.push({start,end,text,score,parts:group.length});
-      break;
-     }
-     if(span>35)break;
+   for(let i=0;i<sentences.length;i++){
+    let group=[];
+    for(let j=i;j<Math.min(sentences.length,i+5);j++){
+     group.push(sentences[j]);
+     const first=group[0],last=group[group.length-1],span=last.end-first.start;
+     if(span<Math.min(12,wanted*.75))continue;
+     if(span>Math.max(35,wanted*1.8))break;
+     const text=group.map(x=>x.text).join(' ').replace(/\s+/g,' ').trim(),q=text.toLowerCase(),words=text.split(/\s+/).filter(Boolean);
+     const hook=/\?|kenapa|mengapa|bagaimana|ternyata|rahasia|bayangkan|what if|why|how|imagine/i.test(q);
+     const emotion=/takut|sedih|marah|senang|menangis|bahaya|mengejutkan|luar biasa|gagal|berhasil|cinta|love|hate|shock|fear/i.test(q);
+     const payoff=/akhirnya|hasilnya|ternyata|karena itu|jadi|kesimpulannya|berhasil|terbukti|maka|therefore|finally|result/i.test(q);
+     const share=/kamu|teman|orang|semua|setiap|pernah|harus|jangan|tips|cara|fakta|you|everyone|people/i.test(q);
+     const clarity=words.length>=18&&words.length<=105&&group.length>=1;
+     const conversation=/setuju|menurutmu|bagaimana menurut|pernahkah|apa pendapat|komentar|pilih|do you agree|what do you think/i.test(q);
+     const contrast=/tetapi|namun|justru|padahal|sebaliknya|but|however|although|instead/i.test(q);
+     const specificity=/\d|persen|rupiah|tahun|kali|percent|dollar|million|billion/i.test(q);
+     const score=Math.min(100,(hook?24:0)+(emotion?20:0)+(payoff?18:0)+(share?14:0)+(clarity?12:0)+(conversation?12:0)+(contrast?5:0)+(specificity?5:0));
+     candidates.push({start:first.start,end:last.end,text,score,parts:group.length});
+     if(span>=wanted)break;
     }
    }
-   candidates.sort((a,b)=>b.score-a.score);
+   candidates.sort((a,b)=>b.score-a.score||(b.end-b.start)-(a.end-a.start));
    const picked=[];
-   for(const item of candidates){if(picked.every(x=>Math.abs(x.start-item.start)>Math.max(18,wanted*.9))){picked.push(item);if(picked.length===5)break}}
+   for(const item of candidates){
+    const middle=(item.start+item.end)/2;
+    if(picked.every(x=>Math.abs((x.start+x.end)/2-middle)>Math.max(18,wanted*.85))){
+     picked.push(item);if(picked.length===5)break;
+    }
+   }
    if(picked.length){
     window.clipforgeSuggestedClips=picked.map((x,i)=>({name:'Momen '+(i+1),start:x.start,end:x.end,score:x.score,text:x.text}));
     $('clipsList').innerHTML=window.clipforgeSuggestedClips.map((x,i)=>'<div class="clipitem"><b>'+x.name+'</b><div class="score">Skor editorial: '+x.score+'/100</div><div class="muted">'+x.start.toFixed(1)+'s – '+x.end.toFixed(1)+'s</div><div style="margin-top:6px;line-height:1.45">'+x.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div><button class="smallbtn" data-clip="'+i+'">Pilih momen</button></div>').join('');
-    $('clipsList').querySelectorAll('[data-clip]').forEach(b=>b.onclick=()=>{const x=window.clipforgeSuggestedClips[Number(b.dataset.clip)];$('start').value=x.start.toFixed(1);$('end').value=x.end.toFixed(1);video.currentTime=x.start;$('clipStatus').textContent=x.name+' dipilih berdasarkan transkrip. Periksa konteks sebelum ekspor.'});
-    $('clipStatus').textContent='Selesai. Kandidat dipilih dari kalimat bertiming dan dinilai berdasarkan hook, emosi, payoff, kejelasan, dan potensi diskusi. Skor editorial bukan prediksi viral.';
+    $('clipsList').querySelectorAll('[data-clip]').forEach(b=>b.onclick=()=>{const x=window.clipforgeSuggestedClips[Number(b.dataset.clip)];$('start').value=x.start.toFixed(1);$('end').value=x.end.toFixed(1);video.currentTime=x.start;$('clipStatus').textContent=x.name+' dipilih dari konteks transkrip. Periksa potongan sebelum ekspor.'});
+    $('clipStatus').textContent='Selesai. Kandidat dibangun dari kalimat utuh dan diberi skor editorial. Skor bukan jaminan viral.';
     return;
    }
   }
