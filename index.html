@@ -138,6 +138,7 @@ details.advanced .controls{margin:0 0 12px}
 </main>
 <script type="module">
 const $=id=>document.getElementById(id);
+document.querySelectorAll('#projectTool>h2,#visualTool>h2').forEach(h=>h.addEventListener('click',()=>h.parentElement.classList.toggle('expanded')));
 document.querySelectorAll('[data-jump]').forEach(b=>b.addEventListener('click',()=>$(b.dataset.jump)?.scrollIntoView({behavior:'smooth',block:'start'})));
 const video=$('video'), fileInput=$('file'); let sourceFile=null, sourceUrl=null, ffmpeg=null, ffmpegReady=false, exporting=false;
 function status(s){$('status').textContent=s}
