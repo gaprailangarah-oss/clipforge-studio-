@@ -234,7 +234,16 @@ $('autoEmoji').onclick=()=>{
 };
 $('volume').oninput=()=>{$('volLabel').textContent=$('volume').value+'%';video.volume=Math.min(1.5,Number($('volume').value)/100)};
 let subtitleSegments=[], whisperPipeline=null, whisperLoading=false;
-function activeSubtitle(t){return subtitleSegments.find(s=>t>=s.start&&t<s.end)?.text||''}
+function activeSubtitle(t){
+ let low=0,high=subtitleSegments.length-1;
+ while(low<=high){
+  const mid=(low+high)>>1,seg=subtitleSegments[mid];
+  if(t<seg.start)high=mid-1;
+  else if(t>=seg.end)low=mid+1;
+  else return seg.text;
+ }
+ return '';
+}
 function updateOverlay(){const el=$('overlayPreview');el.innerHTML='';el.style.color=$('textColor').value;el.style.fontSize=$('textSize').value+'px';el.style.top=$('textPos').value==='top'?'10%':$('textPos').value==='center'?'42%':'auto';el.style.bottom=$('textPos').value==='bottom'?'14%':'auto';el.style.transform='scale('+(Number($('zoom').value)/100)+')';el.style.background='transparent';el.style.textShadow='0 3px 8px #000,0 1px 2px #000';const timed=activeSubtitle(video.currentTime);el.textContent=[$('hook').value,timed||(!subtitleSegments.length?$('caption').value:'')].filter(Boolean).join('\n');$('stage').style.background=$('bgColor').value}
 video.addEventListener('timeupdate',updateOverlay);
 async function getWhisper(){
@@ -725,7 +734,7 @@ $('projectFile').onchange=async e=>{
   const p=JSON.parse(await f.text());
   if(p.app!=='ClipForge Studio'||!p.fields)throw new Error('File bukan proyek ClipForge yang valid.');
   Object.entries(p.fields).forEach(([id,value])=>{if($(id)&&value!==undefined)$(id).value=value});
-  subtitleSegments=Array.isArray(p.subtitles)?p.subtitles.filter(x=>Number.isFinite(Number(x.start))&&Number.isFinite(Number(x.end))&&typeof x.text==='string'):[];
+  subtitleSegments=Array.isArray(p.subtitles)?p.subtitles.filter(x=>Number.isFinite(Number(x.start))&&Number.isFinite(Number(x.end))&&typeof x.text==='string').sort((a,b)=>a.start-b.start):[];
   window.clipforgeSuggestedClips=Array.isArray(p.suggestedClips)?p.suggestedClips:[];
   updateOverlay();updateHookMeter();
   $('projectStatus').textContent='Proyek berhasil dimuat. '+subtitleSegments.length+' segmen subtitle dipulihkan. Pilih ulang video sumber yang sama jika belum dimuat.';
@@ -749,7 +758,7 @@ $('srtFile').onchange=async e=>{
  try{
   const raw=await f.text(),blocks=raw.replace(/\r/g,'').trim().split(/\n\s*\n/),parsed=[];
   for(const block of blocks){const lines=block.split('\n'),time=lines.find(x=>x.includes('-->'));if(!time)continue;const m=time.match(/(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})[,.](\d{3})/);if(!m)continue;const sec=a=>Number(a[1])*3600+Number(a[2])*60+Number(a[3])+Number(a[4])/1000;const at=time.match(/(\d{2}):(\d{2}):(\d{2})[,.](\d{3})\s*-->\s*(\d{2}):(\d{2}):(\d{2})[,.](\d{3})/);const left=sec(at.slice(1,5)),right=sec(at.slice(5,9)),text=lines.slice(lines.indexOf(time)+1).join(' ').trim();if(text&&right>left)parsed.push({start:left,end:right,text})}
-  subtitleSegments=parsed;$('caption').value=parsed.map(x=>x.text).join(' ');updateOverlay();
+  subtitleSegments=parsed.sort((a,b)=>a.start-b.start);$('caption').value=subtitleSegments.map(x=>x.text).join(' ');updateOverlay();
   $('projectStatus').textContent='SRT berhasil diimpor: '+parsed.length+' subtitle.';
  }catch(err){$('projectStatus').textContent='Gagal membaca SRT: '+err.message}
  e.target.value='';
