@@ -444,9 +444,20 @@ function drawExportCanvas(){
  function draw(){if(video.ended||!exporting)return;ctx.fillStyle=$('bgColor').value;ctx.fillRect(0,0,outW,outH);
  const zoom=Number($('zoom').value)/100;const scale=Math.max(outW/w,outH/h)*zoom;const dw=w*scale,dh=h*scale;ctx.drawImage(video,(outW-dw)/2,(outH-dh)/2,dw,dh);
  const theme=$('captionTheme')?.value||'bold';const size=Number($('textSize').value)*outH/720;ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
- const timed=activeSubtitle(video.currentTime);const lines=[$('hook').value,timed||(!subtitleSegments.length?$('caption').value:'')].filter(Boolean).flatMap(t=>t.split('\n'));const lineH=size*1.28;let y=$('textPos').value==='top'?outH*.14:$('textPos').value==='bottom'?outH*.78:outH*.48;
+ const timed=activeSubtitle(video.currentTime);const captionParts=[$('hook').value,timed||(!subtitleSegments.length?$('caption').value:'')].filter(Boolean).flatMap(t=>t.split('\n'));let y=$('textPos').value==='top'?outH*.14:$('textPos').value==='bottom'?outH*.78:outH*.48;
  const palette={bold:{fill:'#ffffff',stroke:'#111111',accent:'#ffe45c'},clean:{fill:'#ffffff',stroke:'#000000',accent:'#ffffff'},neon:{fill:'#72f7ff',stroke:'#07121e',accent:'#72f7ff'},creator:{fill:'#ffffff',stroke:'#111827',accent:'#9b8cff'},pink:{fill:'#ffb6df',stroke:'#351026',accent:'#ff65bd'}}[theme]||{fill:'#ffffff',stroke:'#111111',accent:'#ffe45c'};
- ctx.font=`900 ${size}px Arial`;ctx.lineWidth=Math.max(3,size*.14);ctx.strokeStyle=palette.stroke;ctx.fillStyle=palette.fill;
+ ctx.font=`900 ${size}px Arial`;
+ const maxLineWidth=outW*.88,lines=[];
+ captionParts.forEach(part=>{
+  const words=part.split(/\s+/);let current='';
+  words.forEach(word=>{
+   const candidate=current?current+' '+word:word;
+   if(current&&ctx.measureText(candidate).width>maxLineWidth){lines.push(current);current=word;}
+   else current=candidate;
+  });
+  if(current)lines.push(current);
+ });
+ const lineH=size*1.2;ctx.lineWidth=Math.max(3,size*.14);ctx.strokeStyle=palette.stroke;ctx.fillStyle=palette.fill;
  lines.forEach((line,i)=>{const yy=y+i*lineH;if(theme==='creator'){const tw=Math.min(outW*.92,ctx.measureText(line).width+size*.8);ctx.fillStyle='rgba(8,12,22,.78)';ctx.fillRect((outW-tw)/2,yy-lineH*.48,tw,lineH*.95);ctx.fillStyle=palette.fill;}else if(theme==='bold'&&i>0){ctx.fillStyle=palette.accent;}else if(theme==='neon'){ctx.shadowColor=palette.accent;ctx.shadowBlur=size*.35;}else if(theme==='pink'){ctx.shadowColor=palette.accent;ctx.shadowBlur=size*.18;}ctx.strokeText(line,outW/2,yy);ctx.fillText(line,outW/2,yy);ctx.shadowBlur=0;ctx.fillStyle=palette.fill;});
  const wm=$('watermark').value;if(wm){ctx.font=`bold ${Math.max(16,size*.45)}px Arial`;ctx.textAlign='right';ctx.fillStyle='rgba(255,255,255,.8)';ctx.strokeText(wm,outW-24,outH-28);ctx.fillText(wm,outW-24,outH-28)}
  if(exporting&&!video.ended)requestAnimationFrame(draw)}
