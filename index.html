@@ -95,7 +95,8 @@ details.advanced .controls{margin:0 0 12px}
  <div class="panel" id="autoCreatorTool" style="margin-top:18px;background:linear-gradient(120deg,#27204c,#142b36);border-color:#6555b8">
   <h2 style="margin:0 0 7px">✨ Auto Creator — Satu Klik</h2>
   <div class="muted" style="margin-bottom:12px">Transkripsi AI → pilih momen terbaik → buat video vertikal siap ekspor.</div>
-  <button id="autoCreate" class="primary" style="width:100%;padding:14px;font-size:14px" disabled>✨ BUAT SHORT VIDEO OTOMATIS</button>
+  <button id="autoEditPreview" class="primary" style="width:100%;padding:14px;font-size:14px;margin-bottom:8px" disabled>✨ AUTO EDIT & LIHAT PREVIEW</button>
+  <button id="autoCreate" class="primary" style="width:100%;padding:14px;font-size:14px" disabled>✨ EKSPOR 5 KLIP OTOMATIS</button>
   <div class="muted" id="autoCreateStatus" style="margin-top:9px">Pilih video untuk mengaktifkan Auto Creator.</div>
  </div>
  <div class="row between" id="exportTool" style="margin-top:18px"><div><h2 style="margin:0">Ekspor video</h2><div class="muted">MP4 (H.264) • diproses di browser</div></div><div class="row"><button id="exportFast" disabled>Ekspor cepat WebM</button><button id="smartMp4" disabled>MP4 Cepat + Semua Fitur</button><button id="export" class="primary" disabled>Ekspor MP4</button></div><div class="row" style="margin-top:10px"><button id="iphonePart" disabled>📱 Ekspor bagian iPhone (2 menit)</button><span class="muted">Untuk video panjang: unduh per bagian agar RAM iPhone tidak menumpuk.</span></div></div>
@@ -142,7 +143,7 @@ document.querySelectorAll('#projectTool>h2,#visualTool>h2').forEach(h=>h.addEven
 document.querySelectorAll('[data-jump]').forEach(b=>b.addEventListener('click',()=>$(b.dataset.jump)?.scrollIntoView({behavior:'smooth',block:'start'})));
 const video=$('video'), fileInput=$('file'); let sourceFile=null, sourceUrl=null, ffmpeg=null, ffmpegReady=false, exporting=false;
 function status(s){$('status').textContent=s}
-function setVideo(src,file=null){$('smartMp4').disabled=!file;$('autoCreate').disabled=!file;subtitleSegments=[];$('hookSuggestions').innerHTML='';$('captionStatus').textContent='Pilih video, lalu buat Auto Caption.';if(sourceUrl)URL.revokeObjectURL(sourceUrl);sourceFile=file;sourceUrl=src;video.src=src;video.style.display='block';$('empty').style.display='none';$('export').disabled=false;$('exportFast').disabled=false;$('downloadSource').disabled=!file;video.onloadedmetadata=()=>{$('start').value=0;$('end').value=video.duration.toFixed(1);$('durationLabel').textContent='Durasi: '+video.duration.toFixed(1)+' detik';status('Video siap diedit.');updateOverlay()};video.onerror=()=>status('Video gagal dimuat. Periksa URL atau dukungan CORS.')}
+function setVideo(src,file=null){$('smartMp4').disabled=!file;$('autoCreate').disabled=!file;$('autoEditPreview').disabled=!file;subtitleSegments=[];$('hookSuggestions').innerHTML='';$('captionStatus').textContent='Pilih video, lalu buat Auto Caption.';if(sourceUrl)URL.revokeObjectURL(sourceUrl);sourceFile=file;sourceUrl=src;video.src=src;video.style.display='block';$('empty').style.display='none';$('export').disabled=false;$('exportFast').disabled=false;$('downloadSource').disabled=!file;video.onloadedmetadata=()=>{$('start').value=0;$('end').value=video.duration.toFixed(1);$('durationLabel').textContent='Durasi: '+video.duration.toFixed(1)+' detik';status('Video siap diedit.');updateOverlay()};video.onerror=()=>status('Video gagal dimuat. Periksa URL atau dukungan CORS.')}
 fileInput.addEventListener('change',e=>{const f=e.target.files[0];if(f)setVideo(URL.createObjectURL(f),f)});
 $('loadUrl').onclick=()=>{const u=prompt('Tempel direct URL file video MP4/WebM:');if(u)setVideo(u)};
 $('downloadSource').onclick=()=>{if(!sourceFile)return;const a=document.createElement('a');a.href=sourceUrl;a.download=sourceFile.name;a.click()};
@@ -192,9 +193,10 @@ function updateHookMeter(){
 $('hook').addEventListener('input',updateHookMeter);
 $('autoEmoji').onclick=()=>{
  const hook=$('hook').value,caption=$('caption').value;
- if(!hook.trim()&&!caption.trim()){ $('hookFeedback').textContent='Isi hook atau caption dulu, lalu coba Auto Emoji.';return; }
+ if(!hook.trim()&&!caption.trim()&&!subtitleSegments.length){ $('hookFeedback').textContent='Buat subtitle atau isi hook/caption dulu, lalu coba Auto Emoji.';return; }
  if(hook.trim())$('hook').value=addEmojiToText(hook);
  if(caption.trim())$('caption').value=caption.split(/\n/).map(line=>addEmojiToText(line)).join('\n');
+ if(subtitleSegments.length)subtitleSegments=subtitleSegments.map(seg=>({...seg,text:addEmojiToText(seg.text)}));
  updateOverlay();updateHookMeter();
 };
 $('volume').oninput=()=>{$('volLabel').textContent=$('volume').value+'%';video.volume=Math.min(1.5,Number($('volume').value)/100)};
@@ -267,7 +269,7 @@ $('autoCaption').onclick=async()=>{
     }
    }
   }
-  subtitleSegments=all.sort((x,y)=>x.start-y.start);
+  subtitleSegments=all.sort((x,y)=>x.start-y.start).map(seg=>({...seg,text:addEmojiToText(seg.text)}));
   $('caption').value=subtitleSegments.map(x=>x.text).join(' ');
   $('captionStatus').textContent='Selesai: '+subtitleSegments.length+' segmen subtitle dari '+Math.round(duration/60)+' menit audio. Whisper memproses audio per blok 3 menit untuk membatasi beban inferensi.';
   updateOverlay();
@@ -442,6 +444,37 @@ async function runSmartMp4(){
 }
 $('smartMp4').onclick=runSmartMp4;
 
+// Auto-edit workflow: prepare an editable preview first; exporting remains a separate action.
+$('autoEditPreview').onclick=async()=>{
+ const btn=$('autoEditPreview'),label=$('autoCreateStatus');
+ if(!sourceFile||exporting)return;
+ btn.disabled=true;
+ const waitFor=(id)=>new Promise((resolve,reject)=>{let n=0;const tick=()=>{if(!$(id).disabled){resolve();return}if(++n>3600){reject(new Error('Proses terlalu lama.'));return}setTimeout(tick,500)};tick()});
+ try{
+  label.textContent='1/4 • Membuat subtitle otomatis dan emoji kontekstual…';
+  if(!subtitleSegments.length){$('autoCaption').click();await waitFor('autoCaption');}
+  if(!subtitleSegments.length)throw new Error('Subtitle belum berhasil dibuat. Pastikan video memiliki audio yang jelas.');
+  subtitleSegments=subtitleSegments.map(seg=>({...seg,text:addEmojiToText(seg.text)}));
+  $('caption').value=subtitleSegments.map(x=>x.text).join(' ');
+  updateOverlay();
+  label.textContent='2/4 • Mencari hook terbaik dari transkrip…';
+  $('findHooks').click();
+  label.textContent='3/4 • Menganalisis dan memilih momen terbaik…';
+  $('findClips').click();await waitFor('findClips');
+  const clips=[...(window.clipforgeSuggestedClips||[])].sort((a,b)=>b.score-a.score);
+  if(!clips.length)throw new Error('Tidak ditemukan momen yang layak. Coba periksa kualitas audio/video.');
+  const clip=clips[0];
+  $('start').value=Number(clip.start).toFixed(2);$('end').value=Number(clip.end).toFixed(2);
+  $('hook').value=(clip.hookText||clip.text||'').split(/(?<=[.!?])\s+/)[0].slice(0,105);
+  $('ratio').value='9:16';$('resolution').value='720';$('quality').value='fast';$('captionTheme').value='bold';
+  video.currentTime=Number(clip.start)||0;
+  updateHookMeter();updateOverlay();
+  label.textContent='Preview siap: subtitle + emoji sudah diterapkan, hook dipilih, dan momen terbaik dimuat. Kamu bisa mengubah teks, waktu, rasio, serta tema sebelum mengekspor.';
+  $('captionStatus').textContent='Subtitle dapat ditinjau pada preview saat video diputar. Tekan Auto Emoji lagi jika ingin menerapkan emoji ke subtitle.';
+ }catch(err){label.textContent='Auto Edit gagal: '+err.message;$('captionStatus').textContent=err.message}
+ finally{btn.disabled=!sourceFile}
+};
+
 // One-click workflow: transcribe, rank and export up to five separate Shorts.
 $('autoCreate').onclick=async()=>{
  const btn=$('autoCreate'),label=$('autoCreateStatus');
@@ -576,7 +609,7 @@ async function runExport(format){
   video.playbackRate=oldRate;video.volume=oldVolume;video.currentTime=oldTime;
   exporting=false;
   $('export').disabled=!video.src;$('exportFast').disabled=!video.src;
-  $('smartMp4').disabled=!sourceFile;$('autoCreate').disabled=!sourceFile;
+  $('smartMp4').disabled=!sourceFile;$('autoCreate').disabled=!sourceFile;$('autoEditPreview').disabled=!sourceFile;
  }
 }
 $('export').onclick=()=>runExport('mp4');
