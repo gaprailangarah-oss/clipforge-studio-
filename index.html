@@ -348,7 +348,7 @@ function drawExportCanvas(){
  if(ratio==='9:16'){outW=720;outH=1280}else if(ratio==='1:1'){outW=1080;outH=1080}else if(ratio==='16:9'){outW=1920;outH=1080}else{outW=w;outH=h}
  const target=Number($('resolution').value);if(ratio==='9:16'){outW=Math.round(target*9/16);outH=target}else if(ratio==='1:1'){outW=target;outH=target}else if(ratio==='16:9'){outW=Math.round(target*16/9);outH=target}else{const sc=Math.min(1,target/Math.max(w,h));outW=Math.round(w*sc);outH=Math.round(h*sc)}
  const c=document.createElement('canvas');c.width=outW;c.height=outH;const ctx=c.getContext('2d');
- function draw(){if(video.ended)return;ctx.fillStyle=$('bgColor').value;ctx.fillRect(0,0,outW,outH);
+ function draw(){if(video.ended||!exporting)return;ctx.fillStyle=$('bgColor').value;ctx.fillRect(0,0,outW,outH);
  const zoom=Number($('zoom').value)/100;const scale=Math.max(outW/w,outH/h)*zoom;const dw=w*scale,dh=h*scale;ctx.drawImage(video,(outW-dw)/2,(outH-dh)/2,dw,dh);
  const theme=$('captionTheme')?.value||'bold';const size=Number($('textSize').value)*outH/720;ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
  const timed=activeSubtitle(video.currentTime);const lines=[$('hook').value,timed||(!subtitleSegments.length?$('caption').value:'')].filter(Boolean).flatMap(t=>t.split('\\n'));const lineH=size*1.28;let y=$('textPos').value==='top'?outH*.14:$('textPos').value==='bottom'?outH*.78:outH*.48;
@@ -356,7 +356,7 @@ function drawExportCanvas(){
  ctx.font=`900 ${size}px Arial`;ctx.lineWidth=Math.max(3,size*.14);ctx.strokeStyle=palette.stroke;ctx.fillStyle=palette.fill;
  lines.forEach((line,i)=>{const yy=y+i*lineH;if(theme==='creator'){const tw=Math.min(outW*.92,ctx.measureText(line).width+size*.8);ctx.fillStyle='rgba(8,12,22,.78)';ctx.fillRect((outW-tw)/2,yy-lineH*.48,tw,lineH*.95);ctx.fillStyle=palette.fill;}else if(theme==='bold'&&i>0){ctx.fillStyle=palette.accent;}else if(theme==='neon'){ctx.shadowColor=palette.accent;ctx.shadowBlur=size*.35;}else if(theme==='pink'){ctx.shadowColor=palette.accent;ctx.shadowBlur=size*.18;}ctx.strokeText(line,outW/2,yy);ctx.fillText(line,outW/2,yy);ctx.shadowBlur=0;ctx.fillStyle=palette.fill;});
  const wm=$('watermark').value;if(wm){ctx.font=`bold ${Math.max(16,size*.45)}px Arial`;ctx.textAlign='right';ctx.fillStyle='rgba(255,255,255,.8)';ctx.strokeText(wm,outW-24,outH-28);ctx.fillText(wm,outW-24,outH-28)}
- if(!video.ended)requestAnimationFrame(draw)}
+ if(exporting&&!video.ended)requestAnimationFrame(draw)}
  draw();return c;
 }
 
@@ -455,7 +455,7 @@ async function getExportAudioStream(){
 async function runExport(format){
  if(!video.src||exporting)return;
  exporting=true;$('export').disabled=true;$('exportFast').disabled=true;$('smartMp4').disabled=true;$('autoCreate').disabled=true;$('bar').style.width='0%';
- let stream=null,recorder=null,audioCapture=null,oldRate=video.playbackRate,oldTime=video.currentTime,stopAt=null;
+ let stream=null,recorder=null,audioCapture=null,oldRate=video.playbackRate,oldTime=video.currentTime,oldVolume=video.volume,stopAt=null;
  try{
   if(!window.MediaRecorder)throw new Error('Browser ini belum mendukung MediaRecorder. Perbarui browser atau gunakan Chrome/Edge desktop.');
   if(typeof HTMLCanvasElement.prototype.captureStream!=='function')throw new Error('Browser tidak mendukung canvas video capture. Gunakan Chrome, Edge, atau Safari versi terbaru.');
@@ -463,6 +463,7 @@ async function runExport(format){
   if(!Number.isFinite(end)||end<=start)throw new Error('Waktu akhir harus lebih besar dari waktu mulai.');
   const mobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
   if(mobile&&end-start>600)throw new Error('Ekspor di ponsel dibatasi 10 menit untuk mencegah tab crash. Potong video menjadi beberapa bagian atau gunakan komputer.');
+  if(!video.videoWidth||!video.videoHeight||!Number.isFinite(video.duration))throw new Error('Video belum siap diproses. Tunggu sampai durasi video muncul, lalu coba ekspor lagi.');
   const canvas=drawExportCanvas();
   stream=canvas.captureStream(format==='mp4'?getExportFps():($('quality').value==='fast'?20:24));
   audioCapture=await getExportAudioStream();
@@ -516,7 +517,7 @@ async function runExport(format){
   if(recorder&&recorder.state!=='inactive'){try{recorder.stop()}catch(e){}}
   if(stream)stream.getTracks().forEach(t=>t.stop());
   if(audioCapture)audioCapture.cleanup();
-  video.playbackRate=oldRate;video.currentTime=oldTime;
+  video.playbackRate=oldRate;video.volume=oldVolume;video.currentTime=oldTime;
   exporting=false;
   $('export').disabled=!video.src;$('exportFast').disabled=!video.src;
   $('smartMp4').disabled=!sourceFile;$('autoCreate').disabled=!sourceFile;
