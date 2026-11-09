@@ -17,7 +17,7 @@ The static GitHub Pages app needs a small API service to retrieve a video file f
 ### Current limits
 
 - One video at a time; soft limit of 3 downloads per source IP per hour.
-- Maximum video duration: 20 minutes; maximum file size: 500 MB.
+- Maximum video duration: 20 minutes; maximum file size: 500 MB; server selects a fast progressive stream up to 720p where available.
 - Render free services can sleep, have limited CPU/RAM/bandwidth, and may be slower or unavailable during cold starts.
 - YouTube extraction can fail when YouTube changes its delivery requirements or blocks server requests. The app keeps local-file upload as a fallback.
 - After the video is downloaded into the browser, Whisper, caption timing, emoji decoration, clip selection, and export run on the user's computer. WebGPU is used when supported.
