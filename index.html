@@ -126,7 +126,7 @@ details.advanced .controls{margin:0 0 12px}
  </details>
  <div class="panel" id="autoCreatorTool" style="margin-top:18px;background:linear-gradient(120deg,#27204c,#142b36);border-color:#6555b8">
   <h2 style="margin:0 0 7px">✨ Auto Creator — Satu Klik</h2>
-  <div class="muted" style="margin-bottom:12px">Satu alur otomatis: transkrip, subtitle, emoji, hook, pemilihan momen, dan preview edit.</div>
+  <div class="muted" style="margin-bottom:12px">Satu alur otomatis: transkrip asli, subtitle ber-emoji, hook, pemilihan momen, dan preview edit.</div>
   <button id="autoEditPreview" class="primary" style="width:100%;padding:14px;font-size:14px;margin-bottom:8px" disabled>✨ AUTO EDIT & LIHAT PREVIEW</button>
   <button id="autoCreate" class="primary" style="width:100%;padding:14px;font-size:14px" disabled>✨ EKSPOR 5 KLIP OTOMATIS</button>
   <div class="muted" id="autoCreateStatus" style="margin-top:9px">Pilih video, lalu tekan Auto Edit. Periksa preview sebelum ekspor.</div>
@@ -197,10 +197,21 @@ function chooseEmoji(text){
   [/cepat|tercepat|rekor|besar|terbesar|luar biasa|amazing/,'🚀'],
   [/makanan|masak|resep|food|eat/,'🍜'],
   [/teknologi|ai|robot|aplikasi|tech/,'🤖'],
-  [/olahraga|bola|gol|fitness|gym/,'🔥']
+  [/olahraga|bola|gol|fitness|gym/,'🔥'],
+  [/kapten|kapiten|kapal|laut|samudra|pelaut|navigasi|ship|sea/,'⚓'],
+  [/musik|lagu|nyanyi|konser|music|sing/,'🎵'],
+  [/hewan|kucing|anjing|satwa|animal|cat|dog/,'🐾'],
+  [/alam|gunung|hutan|pantai|bunga|nature|forest/,'🌿'],
+  [/raja|ratu|kerajaan|presiden|pemimpin|king|queen/,'👑'],
+  [/waktu|jam|hari|tahun|sejarah|masa lalu|history/,'⏳']
  ];
  for(const [pattern,emoji] of groups){if(pattern.test(s))return emoji;}
  return /\?|bagaimana|kenapa|mengapa|why|what if/.test(s)?'🤔':'✨';
+}
+function decorateCaptionText(value){
+ const text=(value||'').trim();
+ if(!text)return '';
+ return /\p{Extended_Pictographic}/u.test(text)?text:chooseEmoji(text)+' '+text;
 }
 function addEmojiToText(value){
  const text=(value||'').trim();
@@ -245,7 +256,7 @@ function activeSubtitle(t){
  }
  return '';
 }
-function updateOverlay(){const el=$('overlayPreview');el.innerHTML='';el.style.color=$('textColor').value;el.style.fontSize=$('textSize').value+'px';el.style.top=$('textPos').value==='top'?'10%':$('textPos').value==='center'?'42%':'auto';el.style.bottom=$('textPos').value==='bottom'?'14%':'auto';el.style.transform='scale('+(Number($('zoom').value)/100)+')';el.style.background='transparent';el.style.textShadow='0 3px 8px #000,0 1px 2px #000';const timed=activeSubtitle(video.currentTime);el.textContent=[$('hook').value,timed].filter(Boolean).join('\n');$('stage').style.background=$('bgColor').value}
+function updateOverlay(){const el=$('overlayPreview');el.innerHTML='';el.style.color=$('textColor').value;el.style.fontSize=$('textSize').value+'px';el.style.top=$('textPos').value==='top'?'10%':$('textPos').value==='center'?'42%':'auto';el.style.bottom=$('textPos').value==='bottom'?'14%':'auto';el.style.transform='scale('+(Number($('zoom').value)/100)+')';el.style.background='transparent';el.style.textShadow='0 3px 8px #000,0 1px 2px #000';const timed=activeSubtitle(video.currentTime);el.textContent=[$('hook').value,decorateCaptionText(timed)].filter(Boolean).join('\n');$('stage').style.background=$('bgColor').value}
 video.addEventListener('timeupdate',updateOverlay);
 async function getWhisper(){
  if(whisperPipeline)return whisperPipeline;
@@ -491,7 +502,7 @@ function drawExportCanvas(){
  function draw(){if(video.ended||!exporting)return;ctx.fillStyle=$('bgColor').value;ctx.fillRect(0,0,outW,outH);
  const zoom=Number($('zoom').value)/100;const scale=Math.max(outW/w,outH/h)*zoom;const dw=w*scale,dh=h*scale;ctx.drawImage(video,(outW-dw)/2,(outH-dh)/2,dw,dh);
  const theme=$('captionTheme')?.value||'bold';const size=Number($('textSize').value)*outH/720;ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
- const timed=activeSubtitle(video.currentTime);const captionParts=timed?[timed]:[];let y=$('textPos').value==='top'?outH*.14:$('textPos').value==='bottom'?outH*.78:outH*.48;
+ const timed=activeSubtitle(video.currentTime);const captionParts=timed?[decorateCaptionText(timed)]:[];let y=$('textPos').value==='top'?outH*.14:$('textPos').value==='bottom'?outH*.78:outH*.48;
  const palette={bold:{fill:'#ffffff',stroke:'#111111',accent:'#ffe45c'},clean:{fill:'#ffffff',stroke:'#000000',accent:'#ffffff'},neon:{fill:'#72f7ff',stroke:'#07121e',accent:'#72f7ff'},creator:{fill:'#ffffff',stroke:'#111827',accent:'#9b8cff'},pink:{fill:'#ffb6df',stroke:'#351026',accent:'#ff65bd'}}[theme]||{fill:'#ffffff',stroke:'#111111',accent:'#ffe45c'};
  ctx.font=`900 ${size}px Arial`;
  const maxLineWidth=outW*.88,lines=[];
