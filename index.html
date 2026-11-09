@@ -176,7 +176,7 @@ document.querySelectorAll('#projectTool>h2,#visualTool>h2').forEach(h=>h.addEven
 document.querySelectorAll('[data-jump]').forEach(b=>b.addEventListener('click',()=>$(b.dataset.jump)?.scrollIntoView({behavior:'smooth',block:'start'})));
 const video=$('video'), fileInput=$('file'); let sourceFile=null, sourceUrl=null, ffmpeg=null, ffmpegReady=false, exporting=false;
 const API_BASE_DEFAULT='https://clipforge-studio-api.onrender.com';
-const getApiBase=()=>((localStorage.getItem('clipforgeApiBase')||API_BASE_DEFAULT).trim().replace(/\\/+$/,''));
+const getApiBase=()=>((localStorage.getItem('clipforgeApiBase')||API_BASE_DEFAULT).trim().replace(/\/+$/,''));
 function youtubeVideoId(raw){
  try{
   const u=new URL(raw);
@@ -238,7 +238,7 @@ $('loadUrl').onclick=async()=>{
   $('captionStatus').textContent=err.message;
   if(err instanceof TypeError){
    const custom=prompt('Backend belum terhubung. Masukkan URL backend Render jika sudah kamu deploy:',getApiBase());
-   if(custom){localStorage.setItem('clipforgeApiBase',custom.trim().replace(/\\/+$/,''));status('Alamat backend disimpan. Tekan YouTube AI untuk mencoba lagi.')}
+   if(custom){localStorage.setItem('clipforgeApiBase',custom.trim().replace(/\/+$/,''));status('Alamat backend disimpan. Tekan YouTube AI untuk mencoba lagi.')}
   }
  }
 };
