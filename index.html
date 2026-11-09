@@ -283,6 +283,43 @@ async function getWhisper(){
   return whisperPipeline;
  }finally{whisperLoading=false}
 }
+async function captureAudioFromElement(file){
+ const AC=window.AudioContext||window.webkitAudioContext,ctx=new AC();
+ const audio=new Audio(),url=URL.createObjectURL(file),chunks=[];
+ let processor=null,source=null,gain=null,settled=false;
+ try{
+  audio.preload='auto';audio.playsInline=true;audio.src=url;
+  source=ctx.createMediaElementSource(audio);
+  processor=ctx.createScriptProcessor(4096,2,1);
+  gain=ctx.createGain();gain.gain.value=0;
+  processor.onaudioprocess=e=>{
+   if(settled)return;
+   const input=e.inputBuffer,channels=input.numberOfChannels;
+   const left=input.getChannelData(0),right=channels>1?input.getChannelData(1):left;
+   const mono=new Float32Array(left.length);
+   for(let i=0;i<left.length;i++)mono[i]=(left[i]+right[i])*.5;
+   chunks.push(mono);
+  };
+  source.connect(processor);processor.connect(gain);gain.connect(ctx.destination);
+  if(ctx.state!=='running')await ctx.resume();
+  await audio.play();
+  await new Promise((resolve,reject)=>{
+   const timer=setTimeout(()=>reject(new Error('Pembacaan audio alternatif melewati batas waktu.')),Math.max(30000,Math.min(510000,(Number.isFinite(audio.duration)?audio.duration:480)*1000+15000)));
+   audio.onended=()=>{clearTimeout(timer);resolve()};
+   audio.onerror=()=>{clearTimeout(timer);reject(new Error('Safari tidak dapat memutar audio dari file ini.'))};
+  });
+  settled=true;
+  const length=chunks.reduce((n,x)=>n+x.length,0),data=new Float32Array(length);
+  let offset=0;for(const chunk of chunks){data.set(chunk,offset);offset+=chunk.length}
+  if(!length)throw new Error('Audio tidak terbaca dari pemutar Safari.');
+  return {sampleRate:ctx.sampleRate,duration:length/ctx.sampleRate,numberOfChannels:1,length,getChannelData:()=>data};
+ }finally{
+  settled=true;audio.pause();audio.removeAttribute('src');audio.load();URL.revokeObjectURL(url);
+  if(processor){processor.onaudioprocess=null;processor.disconnect()}
+  if(source)source.disconnect();if(gain)gain.disconnect();
+  await ctx.close().catch(()=>{});
+ }
+}
 function resampleAudio(input,fromRate,toRate){if(fromRate===toRate)return input;const ratio=fromRate/toRate,length=Math.round(input.length/ratio),out=new Float32Array(length);for(let i=0;i<length;i++){const pos=i*ratio,left=Math.floor(pos),right=Math.min(left+1,input.length-1),mix=pos-left;out[i]=input[left]*(1-mix)+input[right]*mix}return out}
 $('autoCaption').onclick=async()=>{
  const btn=$('autoCaption');
@@ -294,7 +331,7 @@ $('autoCaption').onclick=async()=>{
  try{
   $('captionStatus').textContent='Membaca audio sumber…';
   const AC=window.AudioContext||window.webkitAudioContext;ac=new AC();
-  const decoded=await ac.decodeAudioData(await sourceFile.arrayBuffer());
+  let decoded;try{decoded=await ac.decodeAudioData(await sourceFile.arrayBuffer())}catch(decodeError){console.warn('decodeAudioData gagal; mencoba jalur pemutar Safari:',decodeError);$('captionStatus').textContent='Format audio tidak cocok untuk decoder langsung. Mencoba membaca audio melalui pemutar Safari…';if(ac){await ac.close().catch(()=>{});ac=null}decoded=await captureAudioFromElement(sourceFile)}
   // Resample one inference window at a time to avoid a second full-length audio array.
   const rate=decoded.sampleRate,ratio=rate/16000,duration=decoded.duration;
   const channels=Array.from({length:decoded.numberOfChannels},(_,i)=>decoded.getChannelData(i));
