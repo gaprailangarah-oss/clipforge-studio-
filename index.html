@@ -274,24 +274,25 @@ $('autoCaption').onclick=async()=>{
   $('captionStatus').textContent='Membaca audio sumber…';
   const AC=window.AudioContext||window.webkitAudioContext;ac=new AC();
   const decoded=await ac.decodeAudioData(await sourceFile.arrayBuffer());
-  const rate=decoded.sampleRate,ratio=rate/16000,length=Math.floor(decoded.length/ratio);
-  const audio=new Float32Array(length),channels=Array.from({length:decoded.numberOfChannels},(_,i)=>decoded.getChannelData(i));
-  // Linear resampling and channel mixing preserve speech detail better than nearest-neighbour sampling.
-  for(let i=0;i<length;i++){
-   const pos=i*ratio,left=Math.floor(pos),right=Math.min(left+1,decoded.length-1),mix=pos-left;
-   let sum=0;for(const ch of channels)sum+=ch[left]+(ch[right]-ch[left])*mix;
-   audio[i]=sum/channels.length;
-  }
-  let peak=0;for(let i=0;i<audio.length;i++)peak=Math.max(peak,Math.abs(audio[i]));
-  if(peak>0.00001&&peak<0.85){const gain=Math.min(8,0.85/peak);for(let i=0;i<audio.length;i++)audio[i]=Math.max(-1,Math.min(1,audio[i]*gain));}
+  // Resample one inference window at a time to avoid a second full-length audio array.
+  const rate=decoded.sampleRate,ratio=rate/16000,duration=decoded.duration;
+  const channels=Array.from({length:decoded.numberOfChannels},(_,i)=>decoded.getChannelData(i));
   await ac.close();ac=null;
-  const duration=audio.length/16000,transcriber=await getWhisper();
+  const transcriber=await getWhisper();
   const windowSeconds=180,overlapSeconds=3,total=Math.ceil(duration/windowSeconds),all=[];
   let lastAcceptedEnd=0;
   for(let part=0;part<total;part++){
    const start=Math.max(0,part*windowSeconds-(part?overlapSeconds:0));
    const end=Math.min(duration,(part+1)*windowSeconds);
-   const segment=audio.subarray(Math.floor(start*16000),Math.floor(end*16000));
+   const sourceStart=Math.floor(start*rate),sourceEnd=Math.min(decoded.length,Math.ceil(end*rate));
+   const segment=new Float32Array(Math.floor((sourceEnd-sourceStart)/ratio));
+   for(let i=0;i<segment.length;i++){
+    const pos=sourceStart+i*ratio,left=Math.floor(pos),right=Math.min(left+1,sourceEnd-1),mix=pos-left;
+    let sum=0;for(const ch of channels)sum+=ch[left]+(ch[right]-ch[left])*mix;
+    segment[i]=sum/channels.length;
+   }
+   let peak=0;for(let i=0;i<segment.length;i++)peak=Math.max(peak,Math.abs(segment[i]));
+   if(peak>0.00001&&peak<0.85){const gain=Math.min(8,0.85/peak);for(let i=0;i<segment.length;i++)segment[i]=Math.max(-1,Math.min(1,segment[i]*gain));}
    $('captionStatus').textContent='Whisper AI memproses bagian '+(part+1)+'/'+total+' • '+Math.round(start/60)+'–'+Math.round(end/60)+' menit…';
    const language=$('transcriptLanguage')?.value||'indonesian';
    const result=await transcriber(segment,{sampling_rate:16000,return_timestamps:true,chunk_length_s:30,stride_length_s:5,language:language==='auto'?undefined:language,task:'transcribe'});
