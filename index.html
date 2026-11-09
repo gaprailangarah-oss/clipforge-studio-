@@ -138,7 +138,7 @@ details.advanced .controls{margin:0 0 12px}
  <section class="panel" id="captionTool"><h2>🎙️ AI Caption & Hook</h2>
   <label>Judul / hook</label><input id="hook" type="text" placeholder="Tulis hook yang menarik...">
   <label>Bahasa audio</label><select id="transcriptLanguage"><option value="indonesian" selected>Bahasa Indonesia</option><option value="english">English</option><option value="auto">Deteksi otomatis</option></select>
-  <label>Transkrip otomatis</label><div id="captionTranscript" aria-live="polite">Transkrip akan muncul otomatis setelah Auto Edit dijalankan.</div>
+  <label>Transkrip ucapan asli (otomatis)</label><div id="captionTranscript" aria-live="polite">Teks akan menyalin kata-kata yang terdengar di audio video, bukan membuat kalimat baru.</div>
   <div class="row" style="margin-top:9px"><button id="autoCaption" class="primary smallbtn">🎙️ Buat Auto Caption</button><button id="findHooks" class="smallbtn">🎯 Cari Hook Terbaik</button></div>
   <div id="captionStatus" class="muted" style="margin-top:8px">Subtitle dibuat otomatis dari audio video. Tidak perlu mengetik subtitle.</div>
   <div id="hookSuggestions" class="cliplist"></div>
@@ -229,7 +229,8 @@ $('autoEmoji').onclick=()=>{
  if(!hook.trim()&&!subtitleSegments.length){ $('hookFeedback').textContent='Jalankan Auto Caption terlebih dahulu agar AI membuat teks dari suara video.';return; }
  if(hook.trim())$('hook').value=addEmojiToText(hook);
 
- if(subtitleSegments.length)subtitleSegments=subtitleSegments.map(seg=>({...seg,text:addEmojiToText(seg.text)}));
+ // Captions must remain an exact transcript of the original speech.
+
  updateOverlay();updateHookMeter();
 };
 $('volume').oninput=()=>{$('volLabel').textContent=$('volume').value+'%';video.volume=Math.min(1.5,Number($('volume').value)/100)};
@@ -348,7 +349,7 @@ $('autoCaption').onclick=async()=>{
     }
    }
   }
-  subtitleSegments=all.sort((x,y)=>x.start-y.start).map(seg=>({...seg,text:addEmojiToText(seg.text)}));
+  subtitleSegments=all.sort((x,y)=>x.start-y.start).map(seg=>({...seg,text:seg.text.trim()}));
   $('captionTranscript').textContent=subtitleSegments.map(x=>x.text).join(' ');
   $('captionStatus').textContent='Selesai: '+subtitleSegments.length+' segmen subtitle dari '+Math.round(duration/60)+' menit audio. Whisper Base multilingual dengan audio 16 kHz yang dinormalisasi digunakan.';
   updateOverlay();
@@ -490,7 +491,7 @@ function drawExportCanvas(){
  function draw(){if(video.ended||!exporting)return;ctx.fillStyle=$('bgColor').value;ctx.fillRect(0,0,outW,outH);
  const zoom=Number($('zoom').value)/100;const scale=Math.max(outW/w,outH/h)*zoom;const dw=w*scale,dh=h*scale;ctx.drawImage(video,(outW-dw)/2,(outH-dh)/2,dw,dh);
  const theme=$('captionTheme')?.value||'bold';const size=Number($('textSize').value)*outH/720;ctx.textAlign='center';ctx.textBaseline='middle';ctx.lineJoin='round';
- const timed=activeSubtitle(video.currentTime);const captionParts=[$('hook').value,timed].filter(Boolean).flatMap(t=>t.split('\n'));let y=$('textPos').value==='top'?outH*.14:$('textPos').value==='bottom'?outH*.78:outH*.48;
+ const timed=activeSubtitle(video.currentTime);const captionParts=timed?[timed]:[];let y=$('textPos').value==='top'?outH*.14:$('textPos').value==='bottom'?outH*.78:outH*.48;
  const palette={bold:{fill:'#ffffff',stroke:'#111111',accent:'#ffe45c'},clean:{fill:'#ffffff',stroke:'#000000',accent:'#ffffff'},neon:{fill:'#72f7ff',stroke:'#07121e',accent:'#72f7ff'},creator:{fill:'#ffffff',stroke:'#111827',accent:'#9b8cff'},pink:{fill:'#ffb6df',stroke:'#351026',accent:'#ff65bd'}}[theme]||{fill:'#ffffff',stroke:'#111111',accent:'#ffe45c'};
  ctx.font=`900 ${size}px Arial`;
  const maxLineWidth=outW*.88,lines=[];
@@ -554,10 +555,9 @@ $('autoEditPreview').onclick=async()=>{
  btn.disabled=true;
  const waitFor=(id)=>new Promise((resolve,reject)=>{let n=0;const tick=()=>{if(!$(id).disabled){resolve();return}if(++n>3600){reject(new Error('Proses terlalu lama.'));return}setTimeout(tick,500)};tick()});
  try{
-  label.textContent='1/4 • Membuat subtitle otomatis dan emoji kontekstual…';
+  label.textContent='1/4 • Mendengarkan audio asli dan membuat subtitle verbatim…';
   if(!subtitleSegments.length){$('autoCaption').click();await waitFor('autoCaption');}
   if(!subtitleSegments.length)throw new Error('Subtitle belum berhasil dibuat. Pastikan video memiliki audio yang jelas.');
-  subtitleSegments=subtitleSegments.map(seg=>({...seg,text:addEmojiToText(seg.text)}));
   $('captionTranscript').textContent=subtitleSegments.map(x=>x.text).join(' ');
   updateOverlay();
   label.textContent='2/4 • Mencari hook terbaik dari transkrip…';
@@ -572,8 +572,8 @@ $('autoEditPreview').onclick=async()=>{
   $('ratio').value='9:16';$('resolution').value='720';$('quality').value='fast';$('captionTheme').value='bold';
   video.currentTime=Number(clip.start)||0;
   updateHookMeter();updateOverlay();
-  label.textContent='Preview siap: subtitle + emoji sudah diterapkan, hook dipilih, dan momen terbaik dimuat. Kamu bisa mengubah teks, waktu, rasio, serta tema sebelum mengekspor.';
-  $('captionStatus').textContent='Caption mengikuti audio secara otomatis dan tampil sesuai timestamp.';
+  label.textContent='Preview siap: subtitle menampilkan ucapan asli dari audio video, tanpa parafrasa atau suara AI. Periksa sinkronisasi sebelum ekspor.';
+  $('captionStatus').textContent='Subtitle berasal langsung dari ucapan pada audio asli dan mengikuti timestamp Whisper.';
  }catch(err){label.textContent='Auto Edit gagal: '+err.message;$('captionStatus').textContent=err.message}
  finally{btn.disabled=!sourceFile}
 };
@@ -586,7 +586,7 @@ $('autoCreate').onclick=async()=>{
  const oldSettings={start:$('start').value,end:$('end').value,hook:$('hook').value,ratio:$('ratio').value,resolution:$('resolution').value,quality:$('quality').value,clipLength:$('clipLength').value,theme:$('captionTheme').value};
  const waitFor=(id)=>new Promise((resolve,reject)=>{let n=0;const tick=()=>{if(!$(id).disabled){resolve();return}if(++n>3600){reject(new Error('Proses terlalu lama.'));return}setTimeout(tick,500)};tick()});
  try{
-  label.textContent='1/5 • Membuat transkrip dan subtitle AI…';
+  label.textContent='1/5 • Mendengarkan audio asli dan menyalin ucapan menjadi subtitle…';
   $('autoCaption').click();await waitFor('autoCaption');
   if(!subtitleSegments.length)throw new Error('Auto Caption tidak menghasilkan subtitle. Pastikan video memiliki audio yang jelas.');
   label.textContent='2/5 • Menilai hook dan konteks percakapan…';
@@ -595,7 +595,7 @@ $('autoCreate').onclick=async()=>{
   $('findClips').click();await waitFor('findClips');
   const clips=[...(window.clipforgeSuggestedClips||[])].sort((a,b)=>b.score-a.score).slice(0,5);
   if(!clips.length)throw new Error('Tidak ditemukan kandidat klip. Coba video dengan audio yang lebih jelas.');
-  subtitleSegments=subtitleSegments.map(seg=>({...seg,text:addEmojiToText(seg.text)}));
+  $('captionTranscript').textContent=subtitleSegments.map(x=>x.text).join(' ');
   $('ratio').value='9:16';$('resolution').value='720';$('quality').value='fast';$('clipLength').value='15';$('captionTheme').value='bold';
   updateOverlay();
   let completed=0;
