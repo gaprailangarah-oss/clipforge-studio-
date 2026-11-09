@@ -333,10 +333,17 @@ $('autoCaption').onclick=async()=>{
     low+=(1-lpAlpha)*(high-low);
     segment[i]=low;peak=Math.max(peak,Math.abs(low));
    }
-   // Normalize quiet speech conservatively without aggressively boosting silence.
+   // Speech-aware level correction: lift low/medium speech by RMS, while
+   // keeping peaks below clipping and avoiding amplification of near-silence.
    if(peak>0.0001){
-    const gain=Math.min(10,0.92/peak);
-    for(let i=0;i<segment.length;i++)segment[i]=Math.max(-1,Math.min(1,segment[i]*gain));
+    let energy=0;
+    for(let i=0;i<segment.length;i++)energy+=segment[i]*segment[i];
+    const rms=Math.sqrt(energy/Math.max(1,segment.length));
+    if(rms>0.008){
+     let gain=Math.min(12,0.14/rms);
+     gain=Math.min(gain,0.96/peak);
+     for(let i=0;i<segment.length;i++)segment[i]=Math.max(-1,Math.min(1,segment[i]*gain));
+    }
    }
    $('captionStatus').textContent='Whisper AI memproses bagian '+(part+1)+'/'+total+' • '+Math.round(start/60)+'–'+Math.round(end/60)+' menit…';
    const language=$('transcriptLanguage')?.value||'indonesian';
@@ -635,30 +642,37 @@ $('autoCreate').onclick=async()=>{
  }
 };
 
-let exportAudioContext=null, exportAudioSource=null;
+let exportAudioContext=null, exportAudioSource=null, exportAudioCompressor=null, exportAudioGain=null;
 async function getExportAudioStream(){
- if(typeof video.captureStream==='function'||typeof video.mozCaptureStream==='function'){
-  const captured=(video.captureStream||video.mozCaptureStream).call(video);
-  const tracks=captured.getAudioTracks();
-  if(tracks.length)return {tracks,cleanup:()=>captured.getTracks().forEach(t=>t.stop())};
-  captured.getTracks().forEach(t=>t.stop());
- }
  const AudioCtx=window.AudioContext||window.webkitAudioContext;
- if(!AudioCtx) return {tracks:[],cleanup:()=>{}};
+ if(!AudioCtx)throw new Error('Safari tidak dapat membuat jalur audio ekspor. Perbarui iOS/Safari lalu coba lagi.');
+ // Web Audio is more reliable than video.captureStream audio on iPhone Safari.
  if(!exportAudioContext){
   exportAudioContext=new AudioCtx();
   exportAudioSource=exportAudioContext.createMediaElementSource(video);
-  exportAudioSource.connect(exportAudioContext.destination);
+  exportAudioCompressor=exportAudioContext.createDynamicsCompressor();
+  exportAudioCompressor.threshold.value=-24;
+  exportAudioCompressor.knee.value=18;
+  exportAudioCompressor.ratio.value=3;
+  exportAudioCompressor.attack.value=0.004;
+  exportAudioCompressor.release.value=0.22;
+  exportAudioGain=exportAudioContext.createGain();
+  exportAudioGain.gain.value=1.15;
+  exportAudioSource.connect(exportAudioCompressor);
+  exportAudioCompressor.connect(exportAudioGain);
+  exportAudioGain.connect(exportAudioContext.destination);
  }
- if(exportAudioContext.state==='suspended')await exportAudioContext.resume();
+ if(exportAudioContext.state!=='running')await exportAudioContext.resume();
  const destination=exportAudioContext.createMediaStreamDestination();
- exportAudioSource.connect(destination);
- return {tracks:destination.stream.getAudioTracks(),cleanup:()=>{exportAudioSource.disconnect(destination);destination.stream.getTracks().forEach(t=>t.stop())}};
+ exportAudioGain.connect(destination);
+ const tracks=destination.stream.getAudioTracks();
+ if(!tracks.length){destination.stream.getTracks().forEach(t=>t.stop());throw new Error('Safari tidak menghasilkan track audio. Coba putar video sekali, lalu ekspor kembali.')}
+ return {tracks,cleanup:()=>{exportAudioGain.disconnect(destination);destination.stream.getTracks().forEach(t=>t.stop())}};
 }
 async function runExport(format){
  if(!video.src||exporting)return;
  exporting=true;$('export').disabled=true;$('exportFast').disabled=true;$('smartMp4').disabled=true;$('autoCreate').disabled=true;$('bar').style.width='0%';
- let stream=null,recorder=null,audioCapture=null,oldRate=video.playbackRate,oldTime=video.currentTime,oldVolume=video.volume,stopAt=null;
+ let stream=null,recorder=null,audioCapture=null,oldRate=video.playbackRate,oldTime=video.currentTime,oldVolume=video.volume,oldMuted=video.muted,stopAt=null;
  try{
   if(!window.MediaRecorder)throw new Error('Browser ini belum mendukung MediaRecorder. Perbarui browser atau gunakan Chrome/Edge desktop.');
   if(typeof HTMLCanvasElement.prototype.captureStream!=='function')throw new Error('Browser tidak mendukung canvas video capture. Gunakan Chrome, Edge, atau Safari versi terbaru.');
@@ -683,6 +697,7 @@ async function runExport(format){
   recorder.ondataavailable=e=>{if(e.data&&e.data.size)chunks.push(e.data)};
   const finished=new Promise((resolve,reject)=>{recorder.onstop=resolve;recorder.onerror=()=>reject(new Error('Perekaman gagal. Coba resolusi 720p atau klip lebih pendek.'))});
   video.playbackRate=Number($('speed').value)||1;
+  video.muted=false;
   video.volume=Math.min(1.5,Number($('volume').value)/100);
   video.pause();
   await new Promise((resolve,reject)=>{
@@ -720,7 +735,7 @@ async function runExport(format){
   if(recorder&&recorder.state!=='inactive'){try{recorder.stop()}catch(e){}}
   if(stream)stream.getTracks().forEach(t=>t.stop());
   if(audioCapture)audioCapture.cleanup();
-  video.playbackRate=oldRate;video.volume=oldVolume;video.currentTime=oldTime;
+  video.playbackRate=oldRate;video.volume=oldVolume;video.muted=oldMuted;video.currentTime=oldTime;
   exporting=false;
   $('export').disabled=!video.src;$('exportFast').disabled=!video.src;
   $('smartMp4').disabled=!sourceFile;$('autoCreate').disabled=!sourceFile;$('autoEditPreview').disabled=!sourceFile;
