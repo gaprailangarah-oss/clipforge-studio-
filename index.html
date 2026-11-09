@@ -54,7 +54,7 @@ label{display:block;color:#b8c3d4;font-size:12px;margin:10px 0 6px}.field{min-wi
   <div><label>Mode export</label><select id="quality"><option value="fast">Cepat • beban encoding rendah</option><option value="standard" selected>Seimbang</option><option value="high">Kualitas tinggi</option></select></div>
   <div><label>Kecepatan</label><select id="speed"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1× normal</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></div>
  </div>
- <div class="row between" style="margin-top:18px"><div><h2 style="margin:0">Ekspor video</h2><div class="muted">MP4 (H.264) • diproses di browser</div></div><div class="row"><button id="exportFast" disabled>Ekspor cepat WebM</button><button id="export" class="primary" disabled>Ekspor MP4</button></div></div>
+ <div class="row between" style="margin-top:18px"><div><h2 style="margin:0">Ekspor video</h2><div class="muted">MP4 (H.264) • diproses di browser</div></div><div class="row"><button id="exportFast" disabled>Ekspor cepat WebM</button><button id="smartMp4" disabled>MP4 Super Cepat</button><button id="export" class="primary" disabled>Ekspor MP4</button></div></div>
  <div class="progress"><div id="bar"></div></div><div id="status">Pilih video untuk mulai.</div>
 </section>
 <aside class="right">
@@ -71,7 +71,7 @@ label{display:block;color:#b8c3d4;font-size:12px;margin:10px 0 6px}.field{min-wi
    <div class="metertrack"><div id="hookMeterBar"></div></div>
    <div id="hookFeedback">Tulis hook untuk melihat penilaian daya tariknya.</div>
   </div>
-  <label>Watermark</label><input id="watermark" type="text" placeholder="@namachannel">
+  <label>Watermark (opsional)</label><input id="watermark" type="text" placeholder="Kosong = tanpa watermark"><div class="hint">Owner: ekspor bawaan tanpa watermark. Kolom ini hanya menambahkan watermark jika kamu mengisinya.</div>
   <div class="row"><div class="field"><label>Ukuran teks</label><select id="textSize"><option value="24">Kecil</option><option value="36" selected>Sedang</option><option value="52">Besar</option><option value="68">Ekstra besar</option></select></div><div class="field"><label>Posisi teks</label><select id="textPos"><option value="top">Atas</option><option value="center" selected>Tengah</option><option value="bottom">Bawah</option></select></div></div>
   <label>Warna teks</label><select id="textColor"><option value="#ffffff">Putih</option><option value="#ffe45c">Kuning</option><option value="#65e6d2">Mint</option><option value="#ff8eaa">Pink</option></select>
  </section>
@@ -88,7 +88,7 @@ label{display:block;color:#b8c3d4;font-size:12px;margin:10px 0 6px}.field{min-wi
 const $=id=>document.getElementById(id);
 const video=$('video'), fileInput=$('file'); let sourceFile=null, sourceUrl=null, ffmpeg=null, ffmpegReady=false, exporting=false;
 function status(s){$('status').textContent=s}
-function setVideo(src,file=null){subtitleSegments=[];$('hookSuggestions').innerHTML='';$('captionStatus').textContent='Pilih video, lalu buat Auto Caption.';if(sourceUrl)URL.revokeObjectURL(sourceUrl);sourceFile=file;sourceUrl=src;video.src=src;video.style.display='block';$('empty').style.display='none';$('export').disabled=false;$('exportFast').disabled=false;$('downloadSource').disabled=!file;video.onloadedmetadata=()=>{$('start').value=0;$('end').value=video.duration.toFixed(1);$('durationLabel').textContent='Durasi: '+video.duration.toFixed(1)+' detik';status('Video siap diedit.');updateOverlay()};video.onerror=()=>status('Video gagal dimuat. Periksa URL atau dukungan CORS.')}
+function setVideo(src,file=null){$('smartMp4').disabled=!file;subtitleSegments=[];$('hookSuggestions').innerHTML='';$('captionStatus').textContent='Pilih video, lalu buat Auto Caption.';if(sourceUrl)URL.revokeObjectURL(sourceUrl);sourceFile=file;sourceUrl=src;video.src=src;video.style.display='block';$('empty').style.display='none';$('export').disabled=false;$('exportFast').disabled=false;$('downloadSource').disabled=!file;video.onloadedmetadata=()=>{$('start').value=0;$('end').value=video.duration.toFixed(1);$('durationLabel').textContent='Durasi: '+video.duration.toFixed(1)+' detik';status('Video siap diedit.');updateOverlay()};video.onerror=()=>status('Video gagal dimuat. Periksa URL atau dukungan CORS.')}
 fileInput.addEventListener('change',e=>{const f=e.target.files[0];if(f)setVideo(URL.createObjectURL(f),f)});
 $('loadUrl').onclick=()=>{const u=prompt('Tempel direct URL file video MP4/WebM:');if(u)setVideo(u)};
 $('downloadSource').onclick=()=>{if(!sourceFile)return;const a=document.createElement('a');a.href=sourceUrl;a.download=sourceFile.name;a.click()};
@@ -220,6 +220,30 @@ function drawExportCanvas(){
  if(!video.paused)requestAnimationFrame(draw)}
  draw();return c;
 }
+
+async function runSmartMp4(){
+ if(!sourceFile||exporting)return;
+ const unchanged=$('ratio').value==='original'&&Number($('zoom').value)===100&&Number($('speed').value)===1&&!$('hook').value.trim()&&!$('caption').value.trim()&&!$('watermark').value.trim()&&Number($('start').value||0)<0.05&&Math.abs(Number($('end').value||video.duration)-video.duration)<0.2;
+ if(!unchanged){status('MP4 Super Cepat hanya berlaku untuk video asli tanpa trim, crop, teks, watermark, atau perubahan kecepatan. Pilih Rasio: Asli dan kosongkan efek. Untuk hasil edit, gunakan Ekspor MP4 biasa.');return;}
+ exporting=true;$('smartMp4').disabled=true;$('export').disabled=true;$('exportFast').disabled=true;$('bar').style.width='0%';
+ try{
+  status('Menyiapkan jalur MP4 cepat: mempertahankan stream asli bila codec kompatibel…');
+  const {Input,BlobSource,Output,Mp4OutputFormat,BufferTarget,Conversion}=await import('https://cdn.jsdelivr.net/npm/mediabunny@1.62.1/+esm');
+  const input=new Input({source:new BlobSource(sourceFile),formats: (await import('https://cdn.jsdelivr.net/npm/mediabunny@1.62.1/+esm')).ALL_FORMATS});
+  const output=new Output({format:new Mp4OutputFormat({fastStart:'in-memory'}),target:new BufferTarget()});
+  const conversion=await Conversion.init({input,output,tracks:'primary',copy:{mode:'preferred'},tags:{}});
+  if(!conversion.isValid)throw new Error('Codec video/audio sumber tidak didukung untuk MP4 pada browser ini. Gunakan Ekspor MP4 biasa.');
+  conversion.onProgress=p=>{$('bar').style.width=Math.round(p*100)+'%';status('MP4 Super Cepat: '+Math.round(p*100)+'%')};
+  await conversion.execute();
+  const data=output.target.buffer;
+  if(!data)throw new Error('File MP4 tidak berhasil dibuat.');
+  const blob=new Blob([data],{type:'video/mp4'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=url;a.download='clipforge-owner-no-watermark.mp4';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+  $('bar').style.width='100%';status('Selesai! MP4 dibuat tanpa watermark. Jika codec sumber kompatibel, video disalin tanpa render ulang sehingga jauh lebih cepat.');
+ }catch(err){console.error(err);status('MP4 Super Cepat tidak tersedia: '+(err.message||err)+'. Coba Ekspor MP4 biasa.')}
+ finally{exporting=false;$('smartMp4').disabled=!sourceFile;$('export').disabled=!video.src;$('exportFast').disabled=!video.src}
+}
+$('smartMp4').onclick=runSmartMp4;
 
 async function runExport(format){
  if(!video.src||exporting)return;exporting=true;$('export').disabled=true;$('exportFast').disabled=true;$('bar').style.width='0%';
