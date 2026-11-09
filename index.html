@@ -226,7 +226,7 @@ function updateHookMeter(){
 $('hook').addEventListener('input',updateHookMeter);
 $('autoEmoji').onclick=()=>{
  const hook=$('hook').value;
- if(!hook.trim()&&!caption.trim()&&!subtitleSegments.length){ $('hookFeedback').textContent='Buat subtitle atau isi hook/caption dulu, lalu coba Auto Emoji.';return; }
+ if(!hook.trim()&&!subtitleSegments.length){ $('hookFeedback').textContent='Jalankan Auto Caption terlebih dahulu agar AI membuat teks dari suara video.';return; }
  if(hook.trim())$('hook').value=addEmojiToText(hook);
 
  if(subtitleSegments.length)subtitleSegments=subtitleSegments.map(seg=>({...seg,text:addEmojiToText(seg.text)}));
