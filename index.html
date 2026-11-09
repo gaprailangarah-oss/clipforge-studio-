@@ -347,8 +347,24 @@ $('autoCaption').onclick=async()=>{
    }
    $('captionStatus').textContent='Whisper AI memproses bagian '+(part+1)+'/'+total+' • '+Math.round(start/60)+'–'+Math.round(end/60)+' menit…';
    const language=$('transcriptLanguage')?.value||'indonesian';
-   const result=await transcriber(segment,{sampling_rate:16000,return_timestamps:true,chunk_length_s:30,stride_length_s:5,language:language==='auto'?undefined:language,task:'transcribe'});
-   const chunks=result.chunks||[];
+   let result=await transcriber(segment,{sampling_rate:16000,return_timestamps:true,chunk_length_s:30,stride_length_s:5,language:language==='auto'?undefined:language,task:'transcribe'});
+   let chunks=Array.isArray(result.chunks)?result.chunks:[];
+   if(!chunks.length&&!(result.text||'').trim()&&language!=='auto'){
+    result=await transcriber(segment,{sampling_rate:16000,return_timestamps:true,chunk_length_s:30,stride_length_s:5,task:'transcribe'});
+    chunks=Array.isArray(result.chunks)?result.chunks:[];
+   }
+   // Preserve genuine Whisper text if this browser runtime omits timestamp chunks.
+   if(!chunks.length&&(result.text||'').trim()){
+    const sentences=(result.text||'').replace(/\\s+/g,' ').match(/[^.!?]+[.!?]?/g)||[result.text];
+    const usable=sentences.map(x=>x.trim()).filter(Boolean);
+    const weights=usable.map(x=>Math.max(1,x.split(/\\s+/).length));
+    const totalWeight=weights.reduce((a,b)=>a+b,0)||1;
+    let cursor=0;
+    for(let j=0;j<usable.length;j++){
+     const span=(end-start)*weights[j]/totalWeight;
+     chunks.push({text:usable[j],timestamp:[cursor,cursor+span]});cursor+=span;
+    }
+   }
    for(let k=0;k<chunks.length;k++){
     const item=chunks[k],localStart=Number(item.timestamp?.[0]);
     if(!Number.isFinite(localStart))continue;
@@ -369,9 +385,10 @@ $('autoCaption').onclick=async()=>{
   }
   subtitleSegments=all.sort((x,y)=>x.start-y.start).map(seg=>({...seg,text:seg.text.trim()}));
   $('captionTranscript').textContent=subtitleSegments.map(x=>x.text).join(' ');
-  $('captionStatus').textContent='Selesai: '+subtitleSegments.length+' segmen subtitle dari '+Math.round(duration/60)+' menit audio. Whisper Base multilingual dengan audio 16 kHz yang dinormalisasi digunakan.';
+  if(!subtitleSegments.length)throw new Error('Whisper tidak menemukan ucapan yang dapat dikenali. Coba pilih “Deteksi otomatis” pada Bahasa audio, naikkan volume sumber, atau gunakan video dengan suara bicara yang lebih jelas.');
+  $('captionStatus').textContent='Selesai: '+subtitleSegments.length+' segmen subtitle dari '+Math.round(duration/60)+' menit audio. Whisper Base multilingual digunakan.';
   updateOverlay();
- }catch(err){$('captionStatus').textContent='Auto Caption gagal: '+(err.message||err)+'. Coba video lebih pendek atau gunakan komputer dengan RAM lebih besar.'}
+ }catch(err){console.error('ClipForge Auto Caption:',err);$('captionStatus').textContent='Auto Caption gagal: '+(err.message||err)+'. Coba pilih “Deteksi otomatis” untuk Bahasa audio. Jika model gagal dimuat, periksa koneksi internet lalu muat ulang halaman.'}
  finally{if(ac)await ac.close().catch(()=>{});btn.disabled=false}
 };
 function sentenceHooks(text){const sentences=(text||'').replace(/\s+/g,' ').split(/(?<=[.!?])\s+/).map(s=>s.trim()).filter(s=>s.length>=18);const ranked=sentences.map(s=>{let score=0;if(/[?]/.test(s))score+=3;if(/ternyata|rahasia|fakta|mengejutkan|mustahil|jarang|kesalahan|jangan|berubah|terbesar|pertama|bahaya|aneh|percaya|bayangkan|why|secret|mistake|shocking|never/i.test(s))score+=3;if(/\d/.test(s))score+=2;if(/tetapi|namun|justru|padahal|sebaliknya|but|however/i.test(s))score+=2;if(s.length>=35&&s.length<=120)score+=2;if(/kamu|anda|ternyata|ini|begini|kenapa|mengapa/i.test(s))score+=1;return {text:s,score}}).sort((a,b)=>b.score-a.score);return ranked.slice(0,5)}
@@ -575,7 +592,7 @@ $('autoEditPreview').onclick=async()=>{
  try{
   label.textContent='1/4 • Mendengarkan audio asli dan membuat subtitle verbatim…';
   if(!subtitleSegments.length){$('autoCaption').click();await waitFor('autoCaption');}
-  if(!subtitleSegments.length)throw new Error('Subtitle belum berhasil dibuat. Pastikan video memiliki audio yang jelas.');
+  if(!subtitleSegments.length)throw new Error($('captionStatus').textContent||'Auto Caption tidak menghasilkan transkrip.');
   $('captionTranscript').textContent=subtitleSegments.map(x=>x.text).join(' ');
   updateOverlay();
   label.textContent='2/4 • Mencari hook terbaik dari transkrip…';
