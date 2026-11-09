@@ -22,7 +22,7 @@ label{display:block;color:#b8c3d4;font-size:12px;margin:10px 0 6px}.field{min-wi
 .controls{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:14px}
 .right{display:flex;flex-direction:column;gap:14px}.hint{background:#111a24;border:1px solid #26384b;padding:10px;border-radius:10px;color:#aebbd0;font-size:11px;line-height:1.55}
 .progress{height:7px;border-radius:9px;background:#273144;overflow:hidden;margin:10px 0}.progress>div{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .2s}
-#status{font-size:12px;color:var(--muted);min-height:18px}.smallbtn{padding:7px 9px}.pill{display:inline-block;padding:4px 8px;background:#25243e;color:#c7bdff;border-radius:20px;font-size:10px}
+#status{font-size:12px;color:var(--muted);min-height:18px}.smallbtn{padding:7px 9px}.cliplist{display:grid;grid-template-columns:repeat(auto-fit,minmax(125px,1fr));gap:8px;margin-top:10px}.clipitem{background:#101722;border:1px solid var(--line);border-radius:9px;padding:9px}.clipitem button{width:100%;margin-top:6px}.clipfinder{margin-top:14px}.pill{display:inline-block;padding:4px 8px;background:#25243e;color:#c7bdff;border-radius:20px;font-size:10px}
 @media(max-width:950px){main{grid-template-columns:1fr}.right{display:grid;grid-template-columns:1fr 1fr}}@media(max-width:620px){header{padding:0 14px}main{padding:12px}.right{display:flex}.controls{grid-template-columns:1fr 1fr}.stage{min-height:260px}}
 </style></head>
 <body>
@@ -36,12 +36,19 @@ label{display:block;color:#b8c3d4;font-size:12px;margin:10px 0 6px}.field{min-wi
   <div class="timeinputs"><div><label>Mulai (detik)</label><input id="start" type="number" min="0" step=".1" value="0"></div><div><label>Akhir (detik)</label><input id="end" type="number" min="0" step=".1" value="0"></div></div>
   <div class="row" style="margin-top:10px"><button id="setIn" class="smallbtn">Set mulai dari posisi</button><button id="setOut" class="smallbtn">Set akhir dari posisi</button><button id="playClip" class="smallbtn">Putar bagian</button></div>
  </div>
+
+ <section class="panel clipfinder">
+  <div class="row between"><div><h2 style="margin:0">🔎 Cari 5 klip otomatis</h2><div class="muted">Menganalisis perubahan visual untuk menemukan bagian yang paling aktif.</div></div><button id="findClips" class="primary">Cari 5 klip</button></div>
+  <div class="row" style="margin-top:10px"><div class="field"><label>Durasi setiap klip</label><select id="clipLength"><option value="10">10 detik</option><option value="15" selected>15 detik</option><option value="20">20 detik</option><option value="30">30 detik</option></select></div></div>
+  <div id="clipStatus" class="muted" style="margin-top:8px">Pilih video, lalu tekan Cari 5 klip. Hasilnya berupa rekomendasi berdasarkan aktivitas visual, bukan pemahaman isi atau dialog.</div>
+  <div id="clipsList" class="cliplist"></div>
+ </section>
  <div class="controls">
   <div><label>Rasio video</label><select id="ratio"><option value="9:16">9:16 — Shorts/Reels</option><option value="1:1">1:1 — Square</option><option value="16:9">16:9 — YouTube</option><option value="original">Asli</option></select></div>
   <div><label>Resolusi ekspor</label><select id="resolution"><option value="720">720p</option><option value="1080" selected>1080p</option><option value="480">480p</option></select></div>
   <div><label>Kecepatan</label><select id="speed"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1× normal</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></div>
  </div>
- <div class="row between" style="margin-top:18px"><div><h2 style="margin:0">Ekspor video</h2><div class="muted">MP4 (H.264) • diproses di browser</div></div><button id="export" class="primary" disabled>Ekspor MP4</button></div>
+ <div class="row between" style="margin-top:18px"><div><h2 style="margin:0">Ekspor video</h2><div class="muted">MP4 (H.264) • diproses di browser</div></div><div class="row"><button id="exportFast" disabled>Ekspor cepat WebM</button><button id="export" class="primary" disabled>Ekspor MP4</button></div></div>
  <div class="progress"><div id="bar"></div></div><div id="status">Pilih video untuk mulai.</div>
 </section>
 <aside class="right">
@@ -65,7 +72,7 @@ label{display:block;color:#b8c3d4;font-size:12px;margin:10px 0 6px}.field{min-wi
 const $=id=>document.getElementById(id);
 const video=$('video'), fileInput=$('file'); let sourceFile=null, sourceUrl=null, ffmpeg=null, ffmpegReady=false, exporting=false;
 function status(s){$('status').textContent=s}
-function setVideo(src,file=null){if(sourceUrl)URL.revokeObjectURL(sourceUrl);sourceFile=file;sourceUrl=src;video.src=src;video.style.display='block';$('empty').style.display='none';$('export').disabled=false;$('downloadSource').disabled=!file;video.onloadedmetadata=()=>{$('start').value=0;$('end').value=video.duration.toFixed(1);$('durationLabel').textContent='Durasi: '+video.duration.toFixed(1)+' detik';status('Video siap diedit.');updateOverlay()};video.onerror=()=>status('Video gagal dimuat. Periksa URL atau dukungan CORS.')}
+function setVideo(src,file=null){if(sourceUrl)URL.revokeObjectURL(sourceUrl);sourceFile=file;sourceUrl=src;video.src=src;video.style.display='block';$('empty').style.display='none';$('export').disabled=false;$('exportFast').disabled=false;$('downloadSource').disabled=!file;video.onloadedmetadata=()=>{$('start').value=0;$('end').value=video.duration.toFixed(1);$('durationLabel').textContent='Durasi: '+video.duration.toFixed(1)+' detik';status('Video siap diedit.');updateOverlay()};video.onerror=()=>status('Video gagal dimuat. Periksa URL atau dukungan CORS.')}
 fileInput.addEventListener('change',e=>{const f=e.target.files[0];if(f)setVideo(URL.createObjectURL(f),f)});
 $('loadUrl').onclick=()=>{const u=prompt('Tempel direct URL file video MP4/WebM:');if(u)setVideo(u)};
 $('downloadSource').onclick=()=>{if(!sourceFile)return;const a=document.createElement('a');a.href=sourceUrl;a.download=sourceFile.name;a.click()};
@@ -75,6 +82,40 @@ $('playClip').onclick=()=>{if(!video.src)return;let s=Number($('start').value)||
 ['hook','caption','watermark','textSize','textPos','textColor','zoom','bgColor'].forEach(id=>$(id).addEventListener('input',updateOverlay));
 $('volume').oninput=()=>{$('volLabel').textContent=$('volume').value+'%';video.volume=Math.min(1.5,Number($('volume').value)/100)};
 function updateOverlay(){const el=$('overlayPreview');el.innerHTML='';el.style.color=$('textColor').value;el.style.fontSize=$('textSize').value+'px';el.style.top=$('textPos').value==='top'?'10%':$('textPos').value==='center'?'42%':'auto';el.style.bottom=$('textPos').value==='bottom'?'14%':'auto';el.style.transform='scale('+(Number($('zoom').value)/100)+')';el.style.background='transparent';el.style.textShadow='0 3px 8px #000,0 1px 2px #000';el.textContent=[$('hook').value,$('caption').value].filter(Boolean).join('\\n');$('stage').style.background=$('bgColor').value}
+
+$('findClips').onclick=async()=>{
+ if(!video.src||!Number.isFinite(video.duration)){ $('clipStatus').textContent='Pilih video terlebih dahulu.';return; }
+ const btn=$('findClips');btn.disabled=true;$('clipsList').innerHTML='';$('clipStatus').textContent='Menganalisis video…';
+ const wasPlaying=!video.paused, oldTime=video.currentTime, duration=video.duration;
+ const wanted=Math.min(Number($('clipLength').value)||15,duration);
+ const sampleCanvas=document.createElement('canvas');sampleCanvas.width=64;sampleCanvas.height=36;
+ const cctx=sampleCanvas.getContext('2d',{willReadFrequently:true});
+ const samples=[], step=Math.max(0.75,Math.min(2,duration/90));
+ try{
+  video.pause();
+  for(let t=0;t<duration;t+=step){
+   video.currentTime=Math.min(t,Math.max(0,duration-.05));
+   await new Promise((resolve,reject)=>{const done=()=>{video.removeEventListener('seeked',done);resolve()};video.addEventListener('seeked',done,{once:true});setTimeout(()=>{video.removeEventListener('seeked',done);resolve()},1200)});
+   cctx.drawImage(video,0,0,64,36);
+   const px=cctx.getImageData(0,0,64,36).data;
+   let gray=0;for(let i=0;i<px.length;i+=4)gray+=(px[i]*.299+px[i+1]*.587+px[i+2]*.114);
+   samples.push({t,gray:gray/(64*36),pixels:new Uint8Array(px)});
+  }
+  const scored=[];
+  for(let i=1;i<samples.length;i++){const a=samples[i-1].pixels,b=samples[i].pixels;let diff=0;for(let p=0;p<a.length;p+=4)diff+=Math.abs((a[p]*.299+a[p+1]*.587+a[p+2]*.114)-(b[p]*.299+b[p+1]*.587+b[p+2]*.114));scored.push({t:samples[i].t,score:diff/(64*36)});}
+  const minGap=Math.max(wanted*.85,duration/12), chosen=[];
+  scored.sort((a,b)=>b.score-a.score);
+  for(const item of scored){if(chosen.every(x=>Math.abs(x.t-item.t)>=minGap)){chosen.push(item);if(chosen.length===5)break}}
+  if(chosen.length<5){for(let i=0;i<5;i++){const t=Math.max(0,Math.min(duration-wanted,(duration-wanted)*i/4));if(chosen.every(x=>Math.abs(x.t-t)>=minGap*.5))chosen.push({t,score:0});if(chosen.length===5)break}}
+  chosen.sort((a,b)=>a.t-b.t);
+  window.clipforgeSuggestedClips=chosen.map((x,i)=>({name:'Klip '+(i+1),start:Math.max(0,Math.min(duration-wanted,x.t-wanted/2)),end:Math.min(duration,Math.max(0,Math.min(duration-wanted,x.t-wanted/2))+wanted),score:x.score}));
+  $('clipsList').innerHTML=window.clipforgeSuggestedClips.map((x,i)=>'<div class="clipitem"><b>'+x.name+'</b><div class="muted">'+x.start.toFixed(1)+'s – '+x.end.toFixed(1)+'s</div><button class="smallbtn" data-clip="'+i+'">Pilih klip</button></div>').join('');
+  $('clipsList').querySelectorAll('[data-clip]').forEach(b=>b.onclick=()=>{const x=window.clipforgeSuggestedClips[Number(b.dataset.clip)];$('start').value=x.start.toFixed(1);$('end').value=x.end.toFixed(1);video.currentTime=x.start;$('clipStatus').textContent=x.name+' dipilih. Tekan Ekspor MP4 atau Ekspor cepat WebM.'});
+  $('clipStatus').textContent='Selesai. Lima bagian dengan perubahan visual paling tinggi sudah dipilih. Periksa tiap klip sebelum ekspor.';
+ }catch(err){$('clipStatus').textContent='Analisis gagal: '+err.message+'. Pastikan video bisa diputar di preview.'}
+ finally{video.currentTime=oldTime;if(wasPlaying)video.play().catch(()=>{});btn.disabled=false}
+};
+
 $('reset').onclick=()=>{['hook','caption','watermark'].forEach(id=>$(id).value='');$('start').value=0;$('end').value=video.duration||0;$('ratio').value='9:16';$('resolution').value='1080';$('speed').value='1';$('volume').value=100;$('zoom').value=100;$('textSize').value=36;$('textPos').value='center';$('textColor').value='#ffffff';$('bgColor').value='#000000';video.volume=1;$('volLabel').textContent='100%';updateOverlay();status('Pengaturan edit direset.')};
 async function loadFFmpeg(){
  if(ffmpegReady)return;
@@ -101,32 +142,48 @@ function drawExportCanvas(){
  if(!video.paused)requestAnimationFrame(draw)}
  draw();return c;
 }
-$('export').onclick=async()=>{
- if(!video.src||exporting)return;exporting=true;$('export').disabled=true;$('bar').style.width='0%';
+
+async function runExport(format){
+ if(!video.src||exporting)return;exporting=true;$('export').disabled=true;$('exportFast').disabled=true;$('bar').style.width='0%';
+ let stream=null, recorder=null, oldRate=video.playbackRate, oldTime=video.currentTime;
  try{
- const start=Math.max(0,Number($('start').value)||0),end=Math.min(video.duration,Number($('end').value)||video.duration);
- if(end<=start)throw new Error('Waktu akhir harus lebih besar dari waktu mulai.');
- await loadFFmpeg();
- const canvas=drawExportCanvas(), stream=canvas.captureStream(30), vstream=video.captureStream();
- const audio=vstream.getAudioTracks();audio.forEach(t=>stream.addTrack(t));
- const chunks=[];const rec=new MediaRecorder(stream,{mimeType:'video/webm;codecs=vp9,opus'});
- const speed=Number($('speed').value)||1;video.playbackRate=speed;video.volume=Math.min(1.5,Number($('volume').value)/100);
- rec.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
- const finished=new Promise(resolve=>rec.onstop=resolve);
- video.pause();video.currentTime=start;await new Promise(resolve=>video.onseeked=resolve);
- rec.start(500);await video.play();
- const stopAt=()=>{if(video.currentTime>=end){video.pause();video.removeEventListener('timeupdate',stopAt);rec.stop()}};
- video.addEventListener('timeupdate',stopAt);
- status('Merekam hasil edit… video diproses secara real-time.');
- await finished;stream.getTracks().forEach(t=>t.stop());video.playbackRate=1;
- status('Mengonversi ke MP4… jangan tutup tab.');
- const blob=new Blob(chunks,{type:'video/webm'});await ffmpeg.writeFile('input.webm',new Uint8Array(await blob.arrayBuffer()));
- const bitrate= $('resolution').value==='1080'?'5M':$('resolution').value==='720'?'3M':'1.5M';
- await ffmpeg.exec(['-i','input.webm','-c:v','libx264','-preset','ultrafast','-b:v',bitrate,'-af','volume='+String(Number($('volume').value)/100),'-c:a','aac','-b:a','128k','-movflags','+faststart','output.mp4']);
- const data=await ffmpeg.readFile('output.mp4');const mp4=new Blob([data.buffer],{type:'video/mp4'});const url=URL.createObjectURL(mp4);const a=document.createElement('a');a.href=url;a.download='clipforge-export.mp4';a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
- $('bar').style.width='100%';status('Selesai! File MP4 berhasil dibuat.');
- }catch(err){console.error(err);status('Ekspor gagal: '+(err.message||err)+'. Coba browser desktop terbaru atau video yang lebih pendek.')}
- finally{exporting=false;$('export').disabled=false}
-};
+  const start=Math.max(0,Number($('start').value)||0),end=Math.min(video.duration,Number($('end').value)||video.duration);
+  if(end<=start)throw new Error('Waktu akhir harus lebih besar dari waktu mulai.');
+  const canvas=drawExportCanvas();
+  stream=canvas.captureStream(24);
+  const capture=video.captureStream();
+  capture.getAudioTracks().forEach(t=>stream.addTrack(t));
+  const chunks=[];
+  const candidates=format==='mp4'?['video/mp4;codecs=avc1.42E01E,mp4a.40.2','video/mp4','video/webm;codecs=vp8,opus']:['video/webm;codecs=vp8,opus','video/webm'];
+  const mime=candidates.find(x=>MediaRecorder.isTypeSupported(x));
+  if(!mime)throw new Error('Browser tidak mendukung perekaman video. Coba Chrome atau Safari terbaru.');
+  recorder=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:Math.min(5000000,Number($('resolution').value)*3500)});
+  recorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data)};
+  const finished=new Promise((resolve,reject)=>{recorder.onstop=resolve;recorder.onerror=()=>reject(new Error('Perekaman gagal'))});
+  const speed=Number($('speed').value)||1;video.playbackRate=speed;video.volume=Math.min(1.5,Number($('volume').value)/100);
+  video.pause();video.currentTime=start;await new Promise(resolve=>{const done=()=>{video.removeEventListener('seeked',done);resolve()};video.addEventListener('seeked',done,{once:true});setTimeout(resolve,1500)});
+  recorder.start(250);await video.play();
+  status(format==='mp4'?'Mengekspor MP4…':'Mengekspor WebM cepat…');
+  const stopAt=()=>{if(video.currentTime>=end){video.pause();video.removeEventListener('timeupdate',stopAt);if(recorder.state!=='inactive')recorder.stop()}};
+  video.addEventListener('timeupdate',stopAt);
+  await finished;
+  const blob=new Blob(chunks,{type:mime});
+  let output=blob, filename=format==='mp4'&&mime.startsWith('video/mp4')?'clipforge-export.mp4':'clipforge-export.webm';
+  if(format==='mp4'&&!mime.startsWith('video/mp4')){
+   status('Browser ini merekam WebM; mengonversi ke MP4…');
+   await loadFFmpeg();
+   await ffmpeg.writeFile('input.webm',new Uint8Array(await blob.arrayBuffer()));
+   const bitrate=$('resolution').value==='1080'?'4M':$('resolution').value==='720'?'2.5M':'1M';
+   await ffmpeg.exec(['-i','input.webm','-c:v','libx264','-preset','ultrafast','-threads','0','-b:v',bitrate,'-c:a','aac','-b:a','96k','-movflags','+faststart','output.mp4']);
+   const data=await ffmpeg.readFile('output.mp4');output=new Blob([data.buffer],{type:'video/mp4'});filename='clipforge-export.mp4';
+  }
+  const url=URL.createObjectURL(output),a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
+  $('bar').style.width='100%';status('Selesai! '+filename+' berhasil dibuat.');
+ }catch(err){console.error(err);status('Ekspor gagal: '+(err.message||err)+'. Coba resolusi 720p atau klip lebih pendek.')}
+ finally{if(recorder&&recorder.state!=='inactive')recorder.stop();if(stream)stream.getTracks().forEach(t=>t.stop());video.playbackRate=oldRate;video.currentTime=oldTime;exporting=false;$('export').disabled=!video.src;$('exportFast').disabled=!video.src}
+}
+$('export').onclick=()=>runExport('mp4');
+$('exportFast').onclick=()=>runExport('webm');
+
 video.addEventListener('loadedmetadata',()=>{video.volume=1;updateOverlay()});
 </script></body></html>
