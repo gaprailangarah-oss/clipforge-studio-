@@ -60,7 +60,7 @@ label{display:block;color:#b8c3d4;font-size:12px;margin:10px 0 6px}.field{min-wi
   <button id="autoCreate" class="primary" style="width:100%;padding:14px;font-size:14px" disabled>🚀 BUAT VIDEO MP4 OTOMATIS</button>
   <div class="muted" id="autoCreateStatus" style="margin-top:9px">Pilih video untuk mengaktifkan Auto Creator.</div>
  </div>
- <div class="row between" style="margin-top:18px"><div><h2 style="margin:0">Ekspor video</h2><div class="muted">MP4 (H.264) • diproses di browser</div></div><div class="row"><button id="exportFast" disabled>Ekspor cepat WebM</button><button id="smartMp4" disabled>MP4 Cepat + Semua Fitur</button><button id="export" class="primary" disabled>Ekspor MP4</button></div></div>
+ <div class="row between" style="margin-top:18px"><div><h2 style="margin:0">Ekspor video</h2><div class="muted">MP4 (H.264) • diproses di browser</div></div><div class="row"><button id="exportFast" disabled>Ekspor cepat WebM</button><button id="smartMp4" disabled>MP4 Cepat + Semua Fitur</button><button id="export" class="primary" disabled>Ekspor MP4</button></div><div class="row" style="margin-top:10px"><button id="iphonePart" disabled>📱 Ekspor bagian iPhone (2 menit)</button><span class="muted">Untuk video panjang: unduh per bagian agar RAM iPhone tidak menumpuk.</span></div></div>
  <div class="progress"><div id="bar"></div></div><div id="status">Pilih video untuk mulai.</div>
 </section>
 <aside class="right">
@@ -370,7 +370,7 @@ async function runExport(format){
   await finished;
   const blob=new Blob(chunks,{type:mime});
   if(!blob.size)throw new Error('File hasil ekspor kosong. Coba ulangi dengan klip lebih pendek.');
-  const filename=mime.startsWith('video/mp4')?'clipforge-export.mp4':'clipforge-export.webm';
+  const filename=window.clipforgePartIndex?('clipforge-bagian-'+String(window.clipforgePartIndex).padStart(2,'0')+(mime.startsWith('video/mp4')?'.mp4':'.webm')):(mime.startsWith('video/mp4')?'clipforge-export.mp4':'clipforge-export.webm');
   const url=URL.createObjectURL(blob),a=document.createElement('a');
   a.href=url;a.download=filename;document.body.appendChild(a);a.click();a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),120000);
@@ -393,5 +393,44 @@ async function runExport(format){
 $('export').onclick=()=>runExport('mp4');
 $('exportFast').onclick=()=>runExport('webm');
 
-video.addEventListener('loadedmetadata',()=>{video.volume=1;updateOverlay()});
+// iPhone-safe segmented export: one short file per tap, limiting peak memory use.
+let iphoneNextStart=null, iphonePartNumber=0, iphoneExportBusy=false;
+$('iphonePart').onclick=async()=>{
+ if(!video.src||iphoneExportBusy||exporting)return;
+ const originalStart=$('start').value, originalEnd=$('end').value;
+ const fullStart=Math.max(0,Number(originalStart)||0);
+ const fullEnd=Math.min(video.duration,Number(originalEnd)||video.duration);
+ if(!Number.isFinite(fullEnd)||fullEnd<=fullStart){status('Rentang video tidak valid.');return;}
+ if(iphoneNextStart===null){iphoneNextStart=fullStart;iphonePartNumber=0;}
+ if(iphoneNextStart>=fullEnd){
+  iphoneNextStart=null;iphonePartNumber=0;
+  $('iphonePart').textContent='📱 Ekspor bagian iPhone (2 menit)';
+  status('Semua bagian selesai. Tekan lagi untuk memulai ekspor dari awal.');
+  return;
+ }
+ const partStart=iphoneNextStart,partEnd=Math.min(partStart+120,fullEnd);
+ iphonePartNumber++;
+ iphoneNextStart=partEnd;
+ iphoneExportBusy=true;
+ $('start').value=partStart.toFixed(2);$('end').value=partEnd.toFixed(2);
+ window.clipforgePartIndex=iphonePartNumber;
+ $('iphonePart').disabled=true;
+ $('iphonePart').textContent='Mengekspor bagian '+iphonePartNumber+'…';
+ try{
+  await runExport('mp4');
+  if(iphoneNextStart>=fullEnd){
+   $('iphonePart').textContent='Selesai — mulai ulang';
+   status('Bagian terakhir selesai. File MP4 telah diunduh satu per satu.');
+  }else{
+   $('iphonePart').textContent='📱 Ekspor bagian berikutnya ('+Math.ceil((fullEnd-iphoneNextStart)/120)+' tersisa)';
+   status('Bagian '+iphonePartNumber+' selesai. Tekan tombol untuk mengunduh bagian berikutnya.');
+  }
+ }finally{
+  $('start').value=originalStart;$('end').value=originalEnd;
+  window.clipforgePartIndex=0;iphoneExportBusy=false;
+  $('iphonePart').disabled=!video.src;
+ }
+};
+
+video.addEventListener('loadedmetadata',()=>{video.volume=1;updateOverlay();$('iphonePart').disabled=false;});
 </script></body></html>
