@@ -51,7 +51,7 @@ label{display:block;color:#b8c3d4;font-size:12px;margin:10px 0 6px}.field{min-wi
  <div class="controls">
   <div><label>Rasio video</label><select id="ratio"><option value="9:16">9:16 — Shorts/Reels</option><option value="1:1">1:1 — Square</option><option value="16:9">16:9 — YouTube</option><option value="original">Asli</option></select></div>
   <div><label>Resolusi ekspor</label><select id="resolution"><option value="720">720p</option><option value="1080" selected>1080p</option><option value="480">480p</option></select></div>
-  <div><label>Kualitas ekspor</label><select id="quality"><option value="standard">Standar • lebih ringan</option><option value="high" selected>Tinggi • lebih tajam</option></select></div>
+  <div><label>Mode export</label><select id="quality"><option value="fast">Cepat • beban encoding rendah</option><option value="standard" selected>Seimbang</option><option value="high">Kualitas tinggi</option></select></div>
   <div><label>Kecepatan</label><select id="speed"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1× normal</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></div>
  </div>
  <div class="row between" style="margin-top:18px"><div><h2 style="margin:0">Ekspor video</h2><div class="muted">MP4 (H.264) • diproses di browser</div></div><div class="row"><button id="exportFast" disabled>Ekspor cepat WebM</button><button id="export" class="primary" disabled>Ekspor MP4</button></div></div>
@@ -187,7 +187,7 @@ $('findClips').onclick=async()=>{
  finally{video.currentTime=oldTime;if(wasPlaying)video.play().catch(()=>{});btn.disabled=false}
 };
 
-$('reset').onclick=()=>{subtitleSegments=[];$('hookSuggestions').innerHTML='';$('captionStatus').textContent='Subtitle direset.';['hook','caption','watermark'].forEach(id=>$(id).value='');$('start').value=0;$('end').value=video.duration||0;$('ratio').value='9:16';$('resolution').value='1080';$('speed').value='1';$('volume').value=100;$('zoom').value=100;$('textSize').value=36;$('textPos').value='center';$('textColor').value='#ffffff';$('bgColor').value='#000000';video.volume=1;$('volLabel').textContent='100%';updateOverlay();status('Pengaturan edit direset.')};
+$('reset').onclick=()=>{subtitleSegments=[];$('hookSuggestions').innerHTML='';$('captionStatus').textContent='Subtitle direset.';['hook','caption','watermark'].forEach(id=>$(id).value='');$('start').value=0;$('end').value=video.duration||0;$('ratio').value='9:16';$('resolution').value='1080';$('quality').value='standard';$('speed').value='1';$('volume').value=100;$('zoom').value=100;$('textSize').value=36;$('textPos').value='center';$('textColor').value='#ffffff';$('bgColor').value='#000000';video.volume=1;$('volLabel').textContent='100%';updateOverlay();status('Pengaturan edit direset.')};
 async function loadFFmpeg(){
  if(ffmpegReady)return;
  status('Memuat encoder MP4 (FFmpeg)…');
@@ -201,10 +201,11 @@ async function loadFFmpeg(){
 }
 function getExportBitrate(format){
  const resolution=Number($('resolution').value)||1080;
- const high=$('quality').value==='high';
- const base=resolution>=1080?(high?10000000:6500000):resolution>=720?(high?6500000:4200000):(high?3500000:2200000);
+ const mode=$('quality').value;
+ const base=resolution>=1080?(mode==='high'?10000000:mode==='fast'?4000000:6500000):resolution>=720?(mode==='high'?6500000:mode==='fast'?2500000:4200000):(mode==='high'?3500000:mode==='fast'?1400000:2200000);
  return format==='webm'?Math.round(base*.85):base;
 }
+function getExportFps(){return $('quality').value==='fast'?20:30;}
 function drawExportCanvas(){
  const w=video.videoWidth,h=video.videoHeight;const ratio=$('ratio').value;let outW,outH;
  if(ratio==='9:16'){outW=720;outH=1280}else if(ratio==='1:1'){outW=1080;outH=1080}else if(ratio==='16:9'){outW=1920;outH=1080}else{outW=w;outH=h}
@@ -227,7 +228,7 @@ async function runExport(format){
   const start=Math.max(0,Number($('start').value)||0),end=Math.min(video.duration,Number($('end').value)||video.duration);
   if(end<=start)throw new Error('Waktu akhir harus lebih besar dari waktu mulai.');
   const canvas=drawExportCanvas();
-  stream=canvas.captureStream(format==='mp4'?30:24);
+  stream=canvas.captureStream(format==='mp4'?getExportFps():($('quality').value==='fast'?20:24));
   const capture=video.captureStream();
   capture.getAudioTracks().forEach(t=>stream.addTrack(t));
   const chunks=[];
@@ -252,8 +253,8 @@ async function runExport(format){
    await loadFFmpeg();
    await ffmpeg.writeFile('input.webm',new Uint8Array(await blob.arrayBuffer()));
    const bitrate=getExportBitrate('mp4');
-   const crf=$('quality').value==='high'?'21':'24';
-   await ffmpeg.exec(['-i','input.webm','-c:v','libx264','-preset','ultrafast','-threads','0','-r','30','-pix_fmt','yuv420p','-crf',crf,'-maxrate',String(bitrate),'-bufsize',String(bitrate*2),'-c:a','aac','-b:a','160k','-movflags','+faststart','output.mp4']);
+   const crf=$('quality').value==='high'?'20':$('quality').value==='fast'?'28':'24';
+   await ffmpeg.exec(['-i','input.webm','-c:v','libx264','-preset','ultrafast','-threads','0','-r',String(getExportFps()),'-pix_fmt','yuv420p','-crf',crf,'-maxrate',String(bitrate),'-bufsize',String(bitrate*2),'-c:a','aac','-b:a','160k','-movflags','+faststart','output.mp4']);
    const data=await ffmpeg.readFile('output.mp4');output=new Blob([data.buffer],{type:'video/mp4'});filename='clipforge-export.mp4';
   }
   const url=URL.createObjectURL(output),a=document.createElement('a');a.href=url;a.download=filename;a.click();setTimeout(()=>URL.revokeObjectURL(url),60000);
