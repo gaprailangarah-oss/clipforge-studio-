@@ -228,7 +228,51 @@ async function getWhisper(){
  }finally{whisperLoading=false}
 }
 function resampleAudio(input,fromRate,toRate){if(fromRate===toRate)return input;const ratio=fromRate/toRate,length=Math.round(input.length/ratio),out=new Float32Array(length);for(let i=0;i<length;i++){const pos=i*ratio,left=Math.floor(pos),right=Math.min(left+1,input.length-1),mix=pos-left;out[i]=input[left]*(1-mix)+input[right]*mix}return out}
-$('autoCaption').onclick=async()=>{const btn=$('autoCaption');if(!sourceFile){$('captionStatus').textContent='Untuk Auto Caption, pilih file video dari perangkat (direct URL belum didukung).';return}if(!('AudioContext'in window||'webkitAudioContext'in window)){$('captionStatus').textContent='Browser ini belum mendukung pemrosesan audio.';return}const isIPhone=/iPhone|iPad|iPod/i.test(navigator.userAgent);if(isIPhone&&video.duration>480){$('captionStatus').textContent='Agar Safari tidak macet, Auto Caption di iPhone dibatasi 8 menit per proses. Untuk video panjang, gunakan komputer atau potong sumber menjadi beberapa bagian terlebih dahulu.';return}btn.disabled=true;let ac=null;try{$('captionStatus').textContent='Membaca audio. Mode hemat memori aktif…';const AC=window.AudioContext||window.webkitAudioContext;ac=new AC();const buffer=await ac.decodeAudioData(await sourceFile.arrayBuffer());const rate=buffer.sampleRate,ratio=rate/16000,length=Math.floor(buffer.length/ratio),audio=new Float32Array(length);const channels=Array.from({length:buffer.numberOfChannels},(_,i)=>buffer.getChannelData(i));for(let i=0;i<length;i++){const pos=Math.min(buffer.length-1,Math.floor(i*ratio));let sum=0;for(const ch of channels)sum+=ch[pos];audio[i]=sum/channels.length}await ac.close();ac=null;const duration=audio.length/16000;const transcriber=await getWhisper();$('captionStatus').textContent='AI mentranskripsi '+Math.round(duration/60)+' menit audio. Biarkan tab tetap terbuka…';const result=await transcriber(audio,{sampling_rate:16000,return_timestamps:true,chunk_length_s:30,stride_length_s:5});const chunks=result.chunks||[];subtitleSegments=chunks.map(c=>({start:Number(c.timestamp?.[0]??0),end:Number(c.timestamp?.[1]??0),text:(c.text||'').trim()})).filter(x=>x.text&&Number.isFinite(x.start)&&Number.isFinite(x.end)&&x.end>x.start);$('caption').value=result.text||subtitleSegments.map(x=>x.text).join(' ');$('captionStatus').textContent='Selesai: '+subtitleSegments.length+' segmen subtitle. Audio diproses pada 16 kHz untuk menghemat memori.';updateOverlay();}catch(err){$('captionStatus').textContent='Auto Caption gagal: '+(err.message||err)+'. Untuk video panjang, coba browser desktop dan pastikan memori cukup.'}finally{if(ac)await ac.close().catch(()=>{});btn.disabled=false}};
+$('autoCaption').onclick=async()=>{
+ const btn=$('autoCaption');
+ if(!sourceFile){$('captionStatus').textContent='Untuk Auto Caption, pilih file video dari perangkat (direct URL belum didukung).';return}
+ if(!('AudioContext'in window||'webkitAudioContext'in window)){$('captionStatus').textContent='Browser ini belum mendukung pemrosesan audio.';return}
+ const isIPhone=/iPhone|iPad|iPod/i.test(navigator.userAgent);
+ if(isIPhone&&video.duration>480){$('captionStatus').textContent='Untuk menjaga Safari tetap stabil, proses di iPhone dibatasi 8 menit per sesi. Video panjang sebaiknya diproses di komputer.';return}
+ btn.disabled=true;let ac=null;
+ try{
+  $('captionStatus').textContent='Membaca audio sumber…';
+  const AC=window.AudioContext||window.webkitAudioContext;ac=new AC();
+  const decoded=await ac.decodeAudioData(await sourceFile.arrayBuffer());
+  const rate=decoded.sampleRate,ratio=rate/16000,length=Math.floor(decoded.length/ratio);
+  const audio=new Float32Array(length),channels=Array.from({length:decoded.numberOfChannels},(_,i)=>decoded.getChannelData(i));
+  for(let i=0;i<length;i++){const pos=Math.min(decoded.length-1,Math.floor(i*ratio));let sum=0;for(const ch of channels)sum+=ch[pos];audio[i]=sum/channels.length}
+  await ac.close();ac=null;
+  const duration=audio.length/16000,transcriber=await getWhisper();
+  const windowSeconds=180,overlapSeconds=3,total=Math.ceil(duration/windowSeconds),all=[];
+  let lastAcceptedEnd=0;
+  for(let part=0;part<total;part++){
+   const start=Math.max(0,part*windowSeconds-(part?overlapSeconds:0));
+   const end=Math.min(duration,(part+1)*windowSeconds);
+   const segment=audio.subarray(Math.floor(start*16000),Math.floor(end*16000));
+   $('captionStatus').textContent='Whisper AI memproses bagian '+(part+1)+'/'+total+' • '+Math.round(start/60)+'–'+Math.round(end/60)+' menit…';
+   const result=await transcriber(segment,{sampling_rate:16000,return_timestamps:true,chunk_length_s:30,stride_length_s:5});
+   const chunks=result.chunks||[];
+   for(let k=0;k<chunks.length;k++){
+    const item=chunks[k],localStart=Number(item.timestamp?.[0]);
+    if(!Number.isFinite(localStart))continue;
+    const nextStart=Number(chunks[k+1]?.timestamp?.[0]);
+    const localEnd=Number.isFinite(Number(item.timestamp?.[1]))?Number(item.timestamp[1]):(Number.isFinite(nextStart)?nextStart:Math.min(end-start,localStart+3));
+    const absoluteStart=start+localStart,absoluteEnd=Math.min(duration,start+Math.max(localStart+.15,localEnd));
+    const textValue=(item.text||'').trim();
+    if(textValue&&absoluteEnd>absoluteStart&&absoluteStart>=lastAcceptedEnd-.35){
+     all.push({start:absoluteStart,end:absoluteEnd,text:textValue});
+     lastAcceptedEnd=absoluteEnd;
+    }
+   }
+  }
+  subtitleSegments=all.sort((x,y)=>x.start-y.start);
+  $('caption').value=subtitleSegments.map(x=>x.text).join(' ');
+  $('captionStatus').textContent='Selesai: '+subtitleSegments.length+' segmen subtitle dari '+Math.round(duration/60)+' menit audio. Whisper memproses audio per blok 3 menit untuk membatasi beban inferensi.';
+  updateOverlay();
+ }catch(err){$('captionStatus').textContent='Auto Caption gagal: '+(err.message||err)+'. Coba video lebih pendek atau gunakan komputer dengan RAM lebih besar.'}
+ finally{if(ac)await ac.close().catch(()=>{});btn.disabled=false}
+};
 function sentenceHooks(text){const sentences=(text||'').replace(/\s+/g,' ').split(/(?<=[.!?])\\s+/).map(s=>s.trim()).filter(s=>s.length>=18);const ranked=sentences.map(s=>{let score=0;if(/[?]/.test(s))score+=3;if(/ternyata|rahasia|fakta|mengejutkan|mustahil|jarang|kesalahan|jangan|berubah|terbesar|pertama|bahaya|aneh|percaya|bayangkan|why|secret|mistake|shocking|never/i.test(s))score+=3;if(/\\d/.test(s))score+=2;if(/tetapi|namun|justru|padahal|sebaliknya|but|however/i.test(s))score+=2;if(s.length>=35&&s.length<=120)score+=2;if(/kamu|anda|ternyata|ini|begini|kenapa|mengapa/i.test(s))score+=1;return {text:s,score}}).sort((a,b)=>b.score-a.score);return ranked.slice(0,5)}
 $('findHooks').onclick=()=>{const text=subtitleSegments.length?subtitleSegments.map(s=>s.text).join(' '):$('caption').value;const results=sentenceHooks(text);const box=$('hookSuggestions');box.innerHTML='';if(!results.length){$('captionStatus').textContent='Belum ada kalimat yang cukup panjang. Jalankan Auto Caption atau tempel transkrip ke kolom caption.';return}box.innerHTML=results.map((x,i)=>'<div class="clipitem"><b>Rekomendasi '+(i+1)+'</b><div class="muted">Skor pola hook: '+x.score+'/13</div><div style="margin-top:6px;line-height:1.45">'+x.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div><button class="smallbtn" data-hook="'+i+'">Pakai sebagai hook</button></div>').join('');box.querySelectorAll('[data-hook]').forEach(b=>b.onclick=()=>{$('hook').value=results[Number(b.dataset.hook)].text;updateHookMeter();updateOverlay()});$('captionStatus').textContent='Ditemukan '+results.length+' kandidat. Skor berdasarkan pola bahasa, bukan jaminan viral.'};
 
