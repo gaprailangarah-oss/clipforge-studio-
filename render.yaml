@@ -17,3 +17,5 @@ services:
         value: 524288000
       - key: HOURLY_DOWNLOAD_LIMIT
         value: 3
+      - key: ELEVENLABS_API_KEY
+        sync: false
