@@ -962,7 +962,7 @@ $('projectFile').onchange=async e=>{
   updateOverlay();updateHookMeter();
   $('projectStatus').textContent='Proyek berhasil dimuat. '+subtitleSegments.length+' segmen subtitle dipulihkan. Pilih ulang video sumber yang sama jika belum dimuat.';
   if($('clipsList')&&window.clipforgeSuggestedClips.length){
-   $('clipsList').innerHTML=window.clipforgeSuggestedClips.map((x,i)=>'<div class="clipitem"><b>'+String(x.name||('Momen '+(i+1)))+'</b><div class="muted">'+Number(x.start).toFixed(1)+'s – '+Number(x.end).toFixed(1)+'s • skor '+Number(x.score||0)+'</div><button class="smallbtn" data-restore-clip="'+i+'">Pilih momen</button></div>').join('');
+   $('clipsList').innerHTML=window.clipforgeSuggestedClips.map((x,i)=>'<div class="clipitem"><b>'+String(x.name||('Momen '+(i+1))).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')+'</b><div class="muted">'+Number(x.start).toFixed(1)+'s – '+Number(x.end).toFixed(1)+'s • skor '+Number(x.score||0)+'</div><button class="smallbtn" data-restore-clip="'+i+'">Pilih momen</button></div>').join('');
    $('clipsList').querySelectorAll('[data-restore-clip]').forEach(b=>b.onclick=()=>{const x=window.clipforgeSuggestedClips[Number(b.dataset.restoreClip)];$('start').value=x.start;$('end').value=x.end;if(video.src)video.currentTime=x.start});
   }
  }catch(err){$('projectStatus').textContent='Gagal membuka proyek: '+err.message}
