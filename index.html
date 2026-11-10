@@ -823,7 +823,7 @@ async function getExportAudioStream(){
 async function runExport(format){
  if(!video.src||exporting)return;
  exporting=true;$('export').disabled=true;$('exportFast').disabled=true;$('smartMp4').disabled=true;$('autoCreate').disabled=true;$('bar').style.width='0%';
- let stream=null,recorder=null,audioCapture=null,oldRate=video.playbackRate,oldTime=video.currentTime,oldVolume=video.volume,oldMuted=video.muted,stopAt=null;
+ let stream=null,recorder=null,audioCapture=null,oldRate=video.playbackRate,oldTime=video.currentTime,oldVolume=video.volume,oldMuted=video.muted,stopAt=null,finishRecording=null,exportWatchdog=null;
  try{
   if(!window.MediaRecorder)throw new Error('Browser ini belum mendukung MediaRecorder. Perbarui browser atau gunakan Chrome/Edge desktop.');
   if(typeof HTMLCanvasElement.prototype.captureStream!=='function')throw new Error('Browser tidak mendukung canvas video capture. Gunakan Chrome, Edge, atau Safari versi terbaru.');
@@ -860,12 +860,11 @@ async function runExport(format){
   recorder.start(1000);
   await video.play();
   status(format==='mp4'?'Mengekspor MP4…':'Mengekspor WebM…');
-  let exportWatchdog=null;
-  const finishRecording=()=>{
+  finishRecording=()=>{
    if(recorder&&recorder.state!=='inactive'){
     video.pause();
     if(stopAt)video.removeEventListener('timeupdate',stopAt);
-    video.removeEventListener('ended',finishRecording);
+    if(finishRecording)video.removeEventListener('ended',finishRecording);
     if(exportWatchdog){clearInterval(exportWatchdog);exportWatchdog=null}
     try{recorder.stop()}catch(e){}
    }
