@@ -889,7 +889,7 @@ async function runExport(format){
   return false;
  }finally{
   if(stopAt)video.removeEventListener('timeupdate',stopAt);
-  video.removeEventListener('ended',finishRecording);
+  if(finishRecording)video.removeEventListener('ended',finishRecording);
   if(exportWatchdog)clearInterval(exportWatchdog);
   if(recorder&&recorder.state!=='inactive'){try{recorder.stop()}catch(e){}}
   if(stream)stream.getTracks().forEach(t=>t.stop());
