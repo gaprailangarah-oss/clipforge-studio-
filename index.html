@@ -715,7 +715,7 @@ $('autoEditPreview').onclick=async()=>{
   video.currentTime=Number(clip.start)||0;
   updateHookMeter();updateOverlay();
   label.textContent='Preview siap: subtitle menampilkan ucapan asli dari audio video, tanpa parafrasa atau suara AI. Periksa sinkronisasi sebelum ekspor.';
-  $('captionStatus').textContent='Subtitle berasal langsung dari ucapan pada audio asli dan mengikuti timestamp Whisper.';
+  // Keep the detailed Auto Caption timestamp/fallback status visible.
  }catch(err){label.textContent='Auto Edit gagal: '+err.message;$('captionStatus').textContent=err.message}
  finally{btn.disabled=!sourceFile}
 };
