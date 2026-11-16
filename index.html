@@ -139,7 +139,7 @@ details.advanced .controls{margin:0 0 12px}
   <label>Judul / hook</label><input id="hook" type="text" placeholder="Tulis hook yang menarik...">
   <label>Bahasa audio</label><select id="transcriptLanguage"><option value="indonesian" selected>Bahasa Indonesia</option><option value="english">English</option><option value="auto">Deteksi otomatis</option></select>
   <label>Transkrip ucapan asli (otomatis)</label><div id="captionTranscript" aria-live="polite">Teks akan menyalin kata-kata yang terdengar di audio video, bukan membuat kalimat baru.</div>
-  <div class="row" style="margin-top:9px"><button id="autoCaption" class="primary smallbtn">🎙️ Buat Auto Caption</button><button id="cloudCaption" class="smallbtn">✨ AI Bersihkan Suara + Caption</button><button id="findHooks" class="smallbtn">🎯 Cari Hook Terbaik</button></div>
+  <div class="row" style="margin-top:9px"><button id="autoCaption" class="primary smallbtn">🎙️ Buat Auto Caption</button><button id="findHooks" class="smallbtn">🎯 Cari Hook Terbaik</button></div>
   <div id="captionStatus" class="muted" style="margin-top:8px">Subtitle dibuat otomatis dari audio video. Tidak perlu mengetik subtitle.</div>
   <div id="hookSuggestions" class="cliplist"></div>
   <div class="hint" style="margin-top:8px">Audio dipilih dari kanal paling jelas, difilter untuk rentang suara manusia, lalu dinormalisasi sebelum Whisper memprosesnya. Semua berjalan di perangkat.</div>
@@ -332,7 +332,7 @@ async function getWhisper(){
   if(navigator.gpu){
    try{
     $('captionStatus').textContent='GPU browser terdeteksi. Mencoba Whisper dengan WebGPU…';
-    whisperPipeline=await pipeline('automatic-speech-recognition','onnx-community/whisper-base',{device:'webgpu',dtype:'fp16',progress_callback:progress});
+    whisperPipeline=await pipeline('automatic-speech-recognition','onnx-community/whisper-base_timestamped',{device:'webgpu',dtype:'fp16',progress_callback:progress});
     $('captionStatus').textContent='Whisper siap — akselerasi WebGPU aktif. Model tersimpan di cache browser.';
     return whisperPipeline;
    }catch(gpuError){
@@ -340,7 +340,7 @@ async function getWhisper(){
     $('captionStatus').textContent='WebGPU tidak cocok pada perangkat ini. Beralih ke mode kompatibel WASM…';
    }
   }
-  whisperPipeline=await pipeline('automatic-speech-recognition','onnx-community/whisper-base',{device:'wasm',dtype:'q8',progress_callback:progress});
+  whisperPipeline=await pipeline('automatic-speech-recognition','onnx-community/whisper-base_timestamped',{device:'wasm',dtype:'q8',progress_callback:progress});
   $('captionStatus').textContent='Whisper siap — mode WASM lokal aktif. Model tersimpan di cache browser.';
   return whisperPipeline;
  }finally{whisperLoading=false}
@@ -382,40 +382,6 @@ async function captureAudioFromElement(file){
   await ctx.close().catch(()=>{});
  }
 }
-function resampleAudio(input,fromRate,toRate){if(fromRate===toRate)return input;const ratio=fromRate/toRate,length=Math.round(input.length/ratio),out=new Float32Array(length);for(let i=0;i<length;i++){const pos=i*ratio,left=Math.floor(pos),right=Math.min(left+1,input.length-1),mix=pos-left;out[i]=input[left]*(1-mix)+input[right]*mix}return out}
-
-function encodeMonoWav(samples,sampleRate){
- const buffer=new ArrayBuffer(44+samples.length*2),view=new DataView(buffer);
- const write=(offset,value)=>{for(let i=0;i<value.length;i++)view.setUint8(offset+i,value.charCodeAt(i))};
- write(0,'RIFF');view.setUint32(4,36+samples.length*2,true);write(8,'WAVE');write(12,'fmt ');view.setUint32(16,16,true);view.setUint16(20,1,true);view.setUint16(22,1,true);view.setUint32(24,sampleRate,true);view.setUint32(28,sampleRate*2,true);view.setUint16(32,2,true);view.setUint16(34,16,true);write(36,'data');view.setUint32(40,samples.length*2,true);
- for(let i=0;i<samples.length;i++){const value=Math.max(-1,Math.min(1,samples[i]));view.setInt16(44+i*2,value<0?value*32768:value*32767,true)}
- return new Blob([buffer],{type:'audio/wav'});
-}
-$('cloudCaption').onclick=async()=>{
- const btn=$('cloudCaption');if(!sourceFile){$('captionStatus').textContent='Pilih file video terlebih dahulu.';return}
- btn.disabled=true;let ac=null;
- try{
-  $('captionStatus').textContent='Membaca audio untuk dikirim ke AI…';
-  const AC=window.AudioContext||window.webkitAudioContext;ac=new AC();
-  let decoded;try{decoded=await ac.decodeAudioData(await sourceFile.arrayBuffer())}catch(e){throw new Error('Browser tidak dapat membaca audio file ini. Coba MP4 atau MOV.')}
-  const rate=decoded.sampleRate,channels=Array.from({length:decoded.numberOfChannels},(_,i)=>decoded.getChannelData(i));
-  const mixed=new Float32Array(decoded.length);
-  for(let ch=0;ch<channels.length;ch++)for(let i=0;i<mixed.length;i++)mixed[i]+=channels[ch][i]/channels.length;
-  const mono=resampleAudio(mixed,rate,16000),wav=encodeMonoWav(mono,16000);
-  await ac.close();ac=null;
-  $('captionStatus').textContent='Mengirim audio. AI sedang memisahkan suara manusia dari musik dan noise…';
-  const form=new FormData();form.append('audio',wav,'clipforge-audio.wav');form.append('language',$('transcriptLanguage')?.value||'auto');
-  const response=await fetch(getApiBase()+'/api/captions/clean',{method:'POST',body:form});
-  const data=await response.json().catch(()=>({}));
-  if(!response.ok)throw new Error(data.detail||'Layanan AI gagal memproses audio.');
-  subtitleSegments=(data.segments||[]).map(x=>({start:Number(x.start),end:Number(x.end),text:String(x.text||'').trim()})).filter(x=>Number.isFinite(x.start)&&Number.isFinite(x.end)&&x.end>x.start&&x.text);
-  if(!subtitleSegments.length)throw new Error('AI tidak menemukan ucapan yang dapat ditranskripsikan.');
-  $('captionTranscript').textContent=subtitleSegments.map(x=>x.text).join(' ');
-  $('captionStatus').textContent='Selesai: '+data.word_count+' kata • '+subtitleSegments.length+' caption • '+(data.language||'bahasa terdeteksi')+' • suara sudah diisolasi dari backsound.';
-  updateOverlay();
- }catch(err){console.error('ClipForge Cloud Caption:',err);$('captionStatus').textContent='Cloud Caption gagal: '+(err.message||err)+'. Pastikan API ElevenLabs sudah diatur di Render.'}
- finally{if(ac)await ac.close().catch(()=>{});btn.disabled=false}
-};
 $('autoCaption').onclick=async()=>{
  const btn=$('autoCaption');
  if(!sourceFile){$('captionStatus').textContent='Untuk Auto Caption, pilih file video dari perangkat (direct URL belum didukung).';return}
@@ -433,7 +399,7 @@ $('autoCaption').onclick=async()=>{
   if(ac){await ac.close();ac=null}
   const transcriber=await getWhisper();
   const windowSeconds=180,overlapSeconds=3,total=Math.ceil(duration/windowSeconds),all=[];
-  let lastAcceptedEnd=0;
+  let lastAcceptedEnd=0,wordTimestampFallback=false;
   for(let part=0;part<total;part++){
    const start=Math.max(0,part*windowSeconds-(part?overlapSeconds:0));
    const end=Math.min(duration,(part+1)*windowSeconds);
@@ -479,14 +445,18 @@ $('autoCaption').onclick=async()=>{
    }
    $('captionStatus').textContent='Whisper AI memproses bagian '+(part+1)+'/'+total+' • '+Math.round(start/60)+'–'+Math.round(end/60)+' menit…';
    const language=$('transcriptLanguage')?.value||'indonesian';
-   let result=await transcriber(segment,{sampling_rate:16000,return_timestamps:true,chunk_length_s:30,stride_length_s:5,language:language==='auto'?undefined:language,task:'transcribe'});
+   const options={sampling_rate:16000,return_timestamps:'word',chunk_length_s:29,stride_length_s:3,language:language==='auto'?undefined:language,task:'transcribe'};
+   let result;
+   try{result=await transcriber(segment,options)}catch(wordError){console.warn('Whisper word alignment failed; falling back to segment timestamps:',wordError);wordTimestampFallback=true;result=await transcriber(segment,{...options,return_timestamps:true})}
    let chunks=Array.isArray(result.chunks)?result.chunks:[];
    if(!chunks.length&&!(result.text||'').trim()&&language!=='auto'){
-    result=await transcriber(segment,{sampling_rate:16000,return_timestamps:true,chunk_length_s:30,stride_length_s:5,task:'transcribe'});
+    const retry={...options,language:undefined};
+    try{result=await transcriber(segment,retry)}catch(retryError){wordTimestampFallback=true;result=await transcriber(segment,{...retry,return_timestamps:true})}
     chunks=Array.isArray(result.chunks)?result.chunks:[];
    }
    // Preserve genuine Whisper text if this browser runtime omits timestamp chunks.
    if(!chunks.length&&(result.text||'').trim()){
+    wordTimestampFallback=true;
     const sentences=(result.text||'').replace(/\s+/g,' ').match(/[^.!?]+[.!?]?/g)||[result.text];
     const usable=sentences.map(x=>x.trim()).filter(Boolean);
     const weights=usable.map(x=>Math.max(1,x.split(/\s+/).length));
@@ -498,7 +468,7 @@ $('autoCaption').onclick=async()=>{
     }
    }
    const validTimes=chunks.some(item=>item.timestamp?.[0]!=null&&Number.isFinite(Number(item.timestamp[0])));
-   if(chunks.length&&!validTimes){const usable=chunks.map(x=>(x.text||'').trim()).filter(Boolean),weights=usable.map(x=>Math.max(1,x.split(/\s+/).length)),sum=weights.reduce((a,b)=>a+b,0)||1;let cursor=0;chunks.length=0;for(let j=0;j<usable.length;j++){const span=(end-start)*weights[j]/sum;chunks.push({text:usable[j],timestamp:[cursor,cursor+span]});cursor+=span}}
+   if(chunks.length&&!validTimes){wordTimestampFallback=true;const usable=chunks.map(x=>(x.text||'').trim()).filter(Boolean),weights=usable.map(x=>Math.max(1,x.split(/\s+/).length)),sum=weights.reduce((a,b)=>a+b,0)||1;let cursor=0;chunks.length=0;for(let j=0;j<usable.length;j++){const span=(end-start)*weights[j]/sum;chunks.push({text:usable[j],timestamp:[cursor,cursor+span]});cursor+=span}}
    for(let k=0;k<chunks.length;k++){
     const item=chunks[k],localStart=Number(item.timestamp?.[0]);
     if(!Number.isFinite(localStart))continue;
@@ -520,13 +490,75 @@ $('autoCaption').onclick=async()=>{
   subtitleSegments=all.sort((x,y)=>x.start-y.start).map(seg=>({...seg,text:seg.text.trim()}));
   $('captionTranscript').textContent=subtitleSegments.map(x=>x.text).join(' ');
   if(!subtitleSegments.length)throw new Error('Whisper tidak menemukan ucapan yang dapat dikenali. Coba pilih “Deteksi otomatis” pada Bahasa audio, naikkan volume sumber, atau gunakan video dengan suara bicara yang lebih jelas.');
-  $('captionStatus').textContent='Selesai: '+subtitleSegments.length+' segmen subtitle dari '+Math.round(duration/60)+' menit audio. Whisper Base multilingual digunakan.';
+  $('captionStatus').textContent='Selesai: '+subtitleSegments.length+' potongan caption dari '+Math.round(duration/60)+' menit audio. '+(wordTimestampFallback?'Timestamp segmen/perkiraan — periksa sinkronisasi secara manual.':'Timestamp per kata dari Whisper (alignment DTW); tetap periksa hasilnya.');
   updateOverlay();
  }catch(err){console.error('ClipForge Auto Caption:',err);$('captionStatus').textContent='Auto Caption gagal: '+(err.message||err)+'. Coba pilih “Deteksi otomatis” untuk Bahasa audio. Jika model gagal dimuat, periksa koneksi internet lalu muat ulang halaman.'}
  finally{if(ac)await ac.close().catch(()=>{});btn.disabled=false}
 };
 function sentenceHooks(text){const sentences=(text||'').replace(/\s+/g,' ').split(/(?<=[.!?])\s+/).map(s=>s.trim()).filter(s=>s.length>=18);const ranked=sentences.map(s=>{let score=0;if(/[?]/.test(s))score+=3;if(/ternyata|rahasia|fakta|mengejutkan|mustahil|jarang|kesalahan|jangan|berubah|terbesar|pertama|bahaya|aneh|percaya|bayangkan|why|secret|mistake|shocking|never/i.test(s))score+=3;if(/\d/.test(s))score+=2;if(/tetapi|namun|justru|padahal|sebaliknya|but|however/i.test(s))score+=2;if(s.length>=35&&s.length<=120)score+=2;if(/kamu|anda|ternyata|ini|begini|kenapa|mengapa/i.test(s))score+=1;return {text:s,score}}).sort((a,b)=>b.score-a.score);return ranked.slice(0,5)}
 $('findHooks').onclick=()=>{const text=subtitleSegments.map(s=>s.text).join(' ');const results=sentenceHooks(text);const box=$('hookSuggestions');box.innerHTML='';if(!results.length){$('captionStatus').textContent='Belum ada kalimat yang cukup panjang. Jalankan Auto Edit agar AI membuat transkrip.';return}box.innerHTML=results.map((x,i)=>'<div class="clipitem"><b>Rekomendasi '+(i+1)+'</b><div class="muted">Skor pola hook: '+x.score+'/13</div><div style="margin-top:6px;line-height:1.45">'+x.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div><button class="smallbtn" data-hook="'+i+'">Pakai sebagai hook</button></div>').join('');box.querySelectorAll('[data-hook]').forEach(b=>b.onclick=()=>{$('hook').value=results[Number(b.dataset.hook)].text;updateHookMeter();updateOverlay()});$('captionStatus').textContent='Ditemukan '+results.length+' kandidat. Skor berdasarkan pola bahasa, bukan jaminan viral.'};
+
+
+function splitEditorialSentences(segments){
+ const tokens=[],ordered=[...segments].filter(x=>Number.isFinite(x.start)&&Number.isFinite(x.end)&&x.end>x.start&&x.text).sort((a,b)=>a.start-b.start);
+ for(const segment of ordered){
+  const words=String(segment.text).trim().split(/\s+/).filter(Boolean);if(!words.length)continue;
+  const duration=segment.end-segment.start,weights=words.map(w=>Math.max(1,(w.match(/[\p{L}\p{N}]/gu)||[]).length)),total=weights.reduce((a,b)=>a+b,0)||1;
+  let used=0,cursor=segment.start;
+  for(let i=0;i<words.length;i++){used+=weights[i];const end=i===words.length-1?segment.end:segment.start+duration*used/total;if(end>cursor+.025)tokens.push({start:cursor,end,text:words[i]});cursor=end}
+ }
+ const sentences=[];let current=null;const flush=()=>{if(current){sentences.push(current);current=null}};
+ for(const token of tokens){
+  if(current&&(token.start-current.end>.95||current.end-current.start>9||current.text.split(/\s+/).length>=34))flush();
+  if(!current)current={start:token.start,end:token.end,text:token.text};else{current.end=Math.max(current.end,token.end);current.text+=' '+token.text}
+  if(/[.!?…]["'”’)\]]*$/.test(token.text))flush();
+ }
+ flush();return sentences;
+}
+const editorialStopWords=new Set('yang dan di ke dari untuk dengan pada adalah itu ini atau akan tidak ada saya kamu kita mereka dia nya the a an and or to of in on for with is are was were be been being this that it you your we they he she as but so because then'.split(' '));
+function editorialTokens(text){return (String(text||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').match(/[\p{L}\p{N}]+/gu)||[])}
+function scoreEditorialCandidate(group,wanted){
+ const text=group.map(x=>x.text).join(' ').replace(/\s+/g,' ').trim(),tokens=editorialTokens(text),lower=text.toLowerCase(),span=Math.max(.1,group[group.length-1].end-group[0].start);
+ const openingCount=Math.min(12,Math.max(4,Math.round(tokens.length*Math.min(3/span,.45)))),hookText=text.split(/\s+/).slice(0,openingCount).join(' '),opening=hookText.toLowerCase();
+ const hook=/[?]|kenapa|mengapa|bagaimana|ternyata|rahasia|bayangkan|jangan|berhenti|tidak pernah|apa jadinya|what if|why|how|imagine|never|stop|secret|what happens/i.test(opening);
+ const curiosity=/belum tentu|tidak disangka|anehnya|faktanya|masalahnya|yang mengejutkan|coba pikir|perhatikan|the truth|unexpected|nobody|mistake|surprisingly|turns out/i.test(lower);
+ const emotion=/takut|sedih|marah|senang|menangis|bahaya|mengejutkan|luar biasa|gagal|berhasil|cinta|benci|shock|fear|angry|happy|fail|win|love|hate/i.test(lower);
+ const payoff=/akhirnya|hasilnya|ternyata|karena itu|jadi|kesimpulannya|berhasil|terbukti|maka|solusinya|finally|result|lesson|solution|therefore/i.test(lower);
+ const share=/kamu|anda|orang|semua|setiap|pernah|harus|jangan|tips|cara|fakta|you|everyone|people|your|anyone/i.test(lower);
+ const conversation=/setuju|menurutmu|bagaimana menurut|pernahkah|apa pendapat|komentar|pilih|do you agree|what do you think/i.test(lower);
+ const contrast=/tetapi|namun|justru|padahal|sebaliknya|sedangkan|but|however|although|instead|whereas/i.test(lower);
+ const specificity=/\d|persen|rupiah|tahun|kali|percent|dollar|million|billion|nomor|number/i.test(lower);
+ const filler=(lower.match(/\b(eee|emmm|anu|kayak|gitu|uh|um|you know|like)\b/g)||[]).length;
+ const startDependent=/^(karena|sehingga|tetapi|namun|dan|atau|yang|dengan|untuk|which|because|although|but|and|or|with|of|to)\b/i.test(text);
+ const endDependent=/(?:\b(?:dan|atau|karena|sehingga|yang|dengan|untuk|tetapi|namun|and|or|because|which|that|with|of|to|the|a|an))[\s,;]*$/i.test(text);
+ const completePunctuation=/[.!?…]["'”’)\]]*$/.test(text),clarity=tokens.length>=18&&tokens.length<=105;
+ const durationFit=span>=Math.max(7,wanted*.72)&&span<=wanted*1.28,pace=tokens.length/span,naturalPace=pace>=1.25&&pace<=4.8;
+ const setup=/awalnya|mula-mula|sebelumnya|dulu|first|at first|before|once/i.test(lower),storySignals=[setup,contrast,payoff].filter(Boolean).length;
+ let score=12+(hook?17:0)+(curiosity?12:0)+(emotion?9:0)+(payoff?12:0)+(share?5:0)+(clarity?8:0)+(conversation?5:0)+(contrast?7:0)+(specificity?6:0)+(durationFit?6:0)+(naturalPace?5:0)+(completePunctuation?7:0)+(storySignals>=2?8:storySignals===1?4:0)+(group.length>=2?3:0)-Math.min(12,filler*2)-(startDependent?8:0)-(endDependent?12:0)-(tokens.length>105?10:0);
+ score=Math.max(0,Math.min(100,Math.round(score)));
+ const reasons=[hook?'hook awal 1–3 detik':null,curiosity?'rasa penasaran':null,emotion?'muatan emosi':null,payoff?'ada payoff/hasil':null,storySignals>=2?'alur cerita terbentuk':null,contrast?'kontras/kejutan':null,specificity?'detail spesifik':null,completePunctuation?'akhir kalimat utuh':null].filter(Boolean).slice(0,5);
+ return {start:group[0].start,end:group[group.length-1].end,text,score,parts:group.length,reasons,hookText,span};
+}
+function editorialSimilarity(a,b){
+ const tokens=text=>new Set(editorialTokens(text).filter(t=>!editorialStopWords.has(t)&&t.length>2)),left=tokens(a),right=tokens(b);if(!left.size||!right.size)return 0;
+ let overlap=0;for(const token of left)if(right.has(token))overlap++;return overlap/(left.size+right.size-overlap);
+}
+function selectEditorialClips(segments,wanted,duration){
+ const sentences=splitEditorialSentences(segments),candidates=[],minSpan=Math.min(8,Math.max(5,wanted*.55)),maxSpan=Math.max(wanted*1.25,wanted+4);
+ for(let i=0;i<sentences.length;i++){
+  const group=[];
+  for(let j=i;j<Math.min(sentences.length,i+7);j++){
+   const next=sentences[j],previous=group[group.length-1];if(previous&&next.start-previous.end>1.05)break;
+   group.push(next);const span=group[group.length-1].end-group[0].start;if(span>maxSpan)break;if(span<minSpan)continue;
+   const candidate=scoreEditorialCandidate(group,wanted);if(editorialTokens(candidate.text).length>=14&&candidate.end<=duration+.1)candidates.push(candidate);
+  }
+ }
+ candidates.sort((a,b)=>b.score-a.score||Math.abs(a.span-wanted)-Math.abs(b.span-wanted));const picked=[];
+ for(const pass of [{gap:Math.max(1.5,wanted*.12),similarity:.48},{gap:0,similarity:.64},{gap:0,similarity:1}]){
+  for(const item of candidates){if(picked.length>=5)break;const separate=picked.every(x=>item.start>=x.end+pass.gap||item.end<=x.start-pass.gap),distinct=picked.every(x=>editorialSimilarity(item.text,x.text)<pass.similarity);if(separate&&distinct)picked.push(item)}
+ }
+ return picked.sort((a,b)=>b.score-a.score).slice(0,5);
+}
 
 $('findClips').onclick=async()=>{
  if(!video.src||!Number.isFinite(video.duration)){ $('clipStatus').textContent='Pilih video terlebih dahulu.';return; }
@@ -538,76 +570,17 @@ $('findClips').onclick=async()=>{
  const samples=[], mobileAnalysis=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent), step=mobileAnalysis?Math.max(12,duration/120):(duration>=1500?8:duration>=600?4:Math.max(1,Math.min(2,duration/90)));
  try{
   video.pause();
-  // Transcript-first clip selection: prefer complete thoughts and score each candidate on six editorial signals.
+  // Transcript-first editorial ranking: word timing, sentence boundaries, opening hook, story arc, completeness, filler and diversity.
   if(subtitleSegments.length>=2){
-   // Group timed transcript into complete thoughts before scoring, rather than cutting arbitrary word chunks.
-   const ordered=[...subtitleSegments].filter(x=>Number.isFinite(x.start)&&Number.isFinite(x.end)&&x.end>x.start&&x.text).sort((a,b)=>a.start-b.start);
-   const sentences=[];let current=null;
-   for(const seg of ordered){
-    if(!current)current={start:seg.start,end:seg.end,text:seg.text.trim()};
-    else if(seg.start-current.end>1.35||/[.!?…]["')\]]?$/.test(current.text)){
-     sentences.push(current);current={start:seg.start,end:seg.end,text:seg.text.trim()};
-    }else{current.end=Math.max(current.end,seg.end);current.text+=' '+seg.text.trim();}
-   }
-   if(current)sentences.push(current);
-   const candidates=[];
-   for(let i=0;i<sentences.length;i++){
-    let group=[];
-    for(let j=i;j<Math.min(sentences.length,i+5);j++){
-     group.push(sentences[j]);
-     const first=group[0],last=group[group.length-1],span=last.end-first.start;
-     // Keep candidates close to the requested duration; avoid turning a 15-second Short into a much longer cut.
-     if(span<Math.min(12,wanted*.75))continue;
-     if(span>wanted*1.3)break;
-     const text=group.map(x=>x.text).join(' ').replace(/\s+/g,' ').trim(),q=text.toLowerCase(),words=text.split(/\s+/).filter(Boolean);
-     const opening=(group[0]?.text||'').toLowerCase();
-     const hook=/\?|kenapa|mengapa|bagaimana|ternyata|rahasia|bayangkan|jangan|berhenti|tidak pernah|what if|why|how|imagine|never|stop|secret/i.test(opening);
-     const curiosity=/belum tentu|tidak disangka|anehnya|faktanya|masalahnya|yang mengejutkan|coba pikir|perhatikan|the truth|unexpected|nobody|mistake/i.test(q);
-     const emotion=/takut|sedih|marah|senang|menangis|bahaya|mengejutkan|luar biasa|gagal|berhasil|cinta|benci|shock|fear|angry|happy|fail|win/i.test(q);
-     const payoff=/akhirnya|hasilnya|ternyata|karena itu|jadi|kesimpulannya|berhasil|terbukti|maka|therefore|finally|result|lesson|solusinya/i.test(q);
-     const share=/kamu|teman|orang|semua|setiap|pernah|harus|jangan|tips|cara|fakta|you|everyone|people|your/i.test(q);
-     const clarity=words.length>=18&&words.length<=105&&group.length>=1;
-     const conversation=/setuju|menurutmu|bagaimana menurut|pernahkah|apa pendapat|komentar|pilih|do you agree|what do you think/i.test(q);
-     const contrast=/tetapi|namun|justru|padahal|sebaliknya|but|however|although|instead|di sisi lain/i.test(q);
-     const specificity=/\d|persen|rupiah|tahun|kali|percent|dollar|million|billion|nomor|number/i.test(q);
-     const filler=(q.match(/\b(eee|emmm|anu|kayak|gitu|uh|um|you know|like)\b/g)||[]).length;
-     const durationFit=span>=Math.max(8,wanted*.75)&&span<=wanted*1.25;
-     const openingLength=opening.split(/\s+/).filter(Boolean).length;
-     const hookPace=openingLength>=4&&openingLength<=18;
-     const endingComplete=/[.!?…]["')\]]?$/.test(last.text);
-     const tooLong=words.length>90;
-     const raw=(hook?18:0)+(curiosity?14:0)+(emotion?15:0)+(payoff?15:0)+(share?10:0)+(clarity?10:0)+(conversation?8:0)+(contrast?5:0)+(specificity?5:0)+(durationFit?5:0)+(hookPace?5:0)+(endingComplete?4:0)-Math.min(10,filler*2)-(tooLong?8:0);
-     const score=Math.max(0,Math.min(100,raw));
-     const reasons=[hook?'pembuka kuat':null,curiosity?'memancing penasaran':null,emotion?'emosi terasa':null,payoff?'ada hasil/payoff':null,contrast?'kontras/kejutan':null,specificity?'detail spesifik':null].filter(Boolean);
-     candidates.push({start:first.start,end:last.end,text,score,parts:group.length,reasons,hookText:group[0]?.text||''});
-     if(span>=wanted)break;
-    }
-   }
-   candidates.sort((a,b)=>b.score-a.score||(b.end-b.start)-(a.end-a.start));
-   const picked=[];
-   // Pass 1: prefer clearly separated moments with a 2-second breathing gap.
-   for(const item of candidates){
-    if(picked.every(x=>item.start>=x.end+2||item.end<=x.start-2)){
-     picked.push(item);if(picked.length===5)break;
-    }
-   }
-   // Pass 2: if fewer than five strong candidates fit, fill remaining slots with
-   // additional non-overlapping moments rather than returning an unnecessarily short list.
-   if(picked.length<5){
-    for(const item of candidates){
-     if(picked.includes(item))continue;
-     if(picked.every(x=>item.start>=x.end||item.end<=x.start)){
-      picked.push(item);if(picked.length===5)break;
-     }
-    }
-   }
+   const picked=selectEditorialClips(subtitleSegments,wanted,duration);
    if(picked.length){
-    window.clipforgeSuggestedClips=picked.map((x,i)=>({name:'Momen '+(i+1),start:x.start,end:x.end,score:x.score,text:x.text,hookText:x.hookText||'',reasons:x.reasons||[]}));
-    $('clipsList').innerHTML=window.clipforgeSuggestedClips.map((x,i)=>'<div class="clipitem"><b>'+x.name+'</b><div class="score">Skor potensi editorial: '+x.score+'/100</div><div class="muted">'+x.start.toFixed(1)+'s – '+x.end.toFixed(1)+'s</div><div style="margin-top:6px;font-size:12px;color:var(--accent2)">Hook: '+(x.hookText||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div><div class="muted" style="margin-top:5px">'+(x.reasons||[]).join(' • ')+'</div><div style="margin-top:6px;line-height:1.45">'+x.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div><button class="smallbtn" data-clip="'+i+'">Pilih momen</button></div>').join('');
-    $('clipsList').querySelectorAll('[data-clip]').forEach(b=>b.onclick=()=>{const x=window.clipforgeSuggestedClips[Number(b.dataset.clip)];$('start').value=x.start.toFixed(1);$('end').value=x.end.toFixed(1);video.currentTime=x.start;$('clipStatus').textContent=x.name+' dipilih dari konteks transkrip. Periksa potongan sebelum ekspor.'});
-    $('clipStatus').textContent='Selesai. Kandidat dinilai dari hook pembuka, rasa penasaran, emosi, payoff, kejelasan, dan detail. Skor hanya estimasi editorial, bukan prediksi views.';
+    window.clipforgeSuggestedClips=picked.map((x,i)=>({name:'Klip rekomendasi '+(i+1),start:Math.max(0,x.start),end:Math.min(duration,x.end),score:x.score,text:x.text,hookText:x.hookText,reasons:x.reasons}));
+    $('clipsList').innerHTML=window.clipforgeSuggestedClips.map((x,i)=>'<div class="clipitem"><b>'+x.name+'</b><div class="score">Skor editorial: '+x.score+'/100</div><div class="muted">'+x.start.toFixed(1)+'s – '+x.end.toFixed(1)+'s</div><div style="margin-top:6px;font-size:12px;color:var(--accent2)">Hook awal: '+x.hookText.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div><div class="muted" style="margin-top:5px">'+x.reasons.join(' • ')+'</div><div style="margin-top:6px;line-height:1.45">'+x.text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div><button class="smallbtn" data-clip="'+i+'">Pilih momen</button></div>').join('');
+    $('clipsList').querySelectorAll('[data-clip]').forEach(b=>b.onclick=()=>{const x=window.clipforgeSuggestedClips[Number(b.dataset.clip)];$('start').value=x.start.toFixed(2);$('end').value=x.end.toFixed(2);video.currentTime=x.start;$('clipStatus').textContent=x.name+' dipilih. Periksa awal/akhir dan sinkronisasi sebelum ekspor.'});
+    $('clipStatus').textContent='Ditemukan '+picked.length+' klip berbeda. Dinilai dari hook awal, konteks, alur, payoff, kelengkapan kalimat, jeda, filler, dan keragaman. Skor hanya estimasi editorial — bukan jaminan viral atau jumlah views.';
     return;
    }
+   $('clipStatus').textContent='Transkrip belum cukup untuk lima klip utuh. Mencoba analisis visual sebagai alternatif…';
   }
   for(let t=0;t<duration;t+=step){
    video.currentTime=Math.min(t,Math.max(0,duration-.05));
@@ -737,7 +710,7 @@ $('autoEditPreview').onclick=async()=>{
   if(!clips.length)throw new Error('Tidak ditemukan momen yang layak. Coba periksa kualitas audio/video.');
   const clip=clips[0];
   $('start').value=Number(clip.start).toFixed(2);$('end').value=Number(clip.end).toFixed(2);
-  $('hook').value=(clip.hookText||clip.text||'').split(/(?<=[.!?])\s+/)[0].slice(0,105);
+  $('hook').value=(clip.hookText||clip.text||'').slice(0,105);
   $('ratio').value='9:16';$('resolution').value='720';$('quality').value='fast';$('captionTheme').value='bold';
   video.currentTime=Number(clip.start)||0;
   updateHookMeter();updateOverlay();
@@ -758,6 +731,7 @@ $('autoCreate').onclick=async()=>{
   label.textContent='1/5 • Mendengarkan audio asli dan menyalin ucapan menjadi subtitle…';
   $('autoCaption').click();await waitFor('autoCaption');
   if(!subtitleSegments.length)throw new Error('Auto Caption tidak menghasilkan subtitle. Pastikan video memiliki audio yang jelas.');
+  $('clipLength').value='15';
   label.textContent='2/5 • Menilai hook dan konteks percakapan…';
   $('findHooks').click();
   label.textContent='3/5 • Memilih lima momen terbaik yang tidak berdekatan…';
@@ -771,7 +745,7 @@ $('autoCreate').onclick=async()=>{
   for(let i=0;i<clips.length;i++){
    const clip=clips[i],clipStart=Math.max(0,Number(clip.start)||0),clipEnd=Math.min(video.duration,Number(clip.end)||video.duration);
    if(clipEnd<=clipStart)continue;
-   const firstSentence=(clip.text||'').split(/(?<=[.!?])\s+/)[0]||'';
+   const firstSentence=clip.hookText||(clip.text||'').split(/(?<=[.!?])\s+/)[0]||'';
    $('start').value=clipStart.toFixed(2);$('end').value=clipEnd.toFixed(2);
    $('hook').value=firstSentence.length>105?firstSentence.slice(0,102)+'…':firstSentence;
    updateHookMeter();updateOverlay();
