@@ -1,6 +1,6 @@
 # ClipForge Studio
 
-Browser-based video editor with local Whisper transcription, local word-timed Whisper captions, automatic highlight selection, and MP4 export.
+Browser-based video editor with local word-timed Whisper transcription, transcript-based highlight ranking, and MP4 export.
 
 ## YouTube link processing (free, limited)
 
@@ -20,7 +20,7 @@ The static GitHub Pages app needs a small API service to retrieve a video file f
 - Maximum video duration: 20 minutes; maximum file size: 500 MB; server selects a fast progressive stream up to 720p where available.
 - Render free services can sleep, have limited CPU/RAM/bandwidth, and may be slower or unavailable during cold starts.
 - YouTube extraction can fail when YouTube changes its delivery requirements or blocks server requests. The app keeps local-file upload as a fallback.
-- After the video is downloaded into the browser, Whisper, caption timing, emoji decoration, clip selection, and export run on the user's computer. WebGPU is used when supported. The clip ranker favors complete thoughts, short opening hooks, narrative signals, payoff, and distinct non-overlapping moments.
+- After the video is downloaded into the browser, Whisper, caption timing, emoji decoration, clip selection, and export run on the user's computer. WebGPU is used when supported. The clip ranker favors complete thoughts, short opening hooks, narrative signals, payoff, and distinct non-overlapping moments. It is a lightweight editorial heuristic (timing, punctuation, keyword cues, filler words, and text diversity), not a deep semantic model; it may miss sarcasm, visual context, or nuanced story meaning.
 - No automatic publishing to YouTube and no watermark.
 
 ### Local AI captions (free)
